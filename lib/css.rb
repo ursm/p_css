@@ -15,9 +15,11 @@ require_relative 'css/tokenizer'
 require_relative 'css/nodes'
 require_relative 'css/parser'
 require_relative 'css/selectors'
+require_relative 'css/media_queries'
 require_relative 'css/serializer'
 require_relative 'css/urange'
 require_relative 'css/nesting'
+require_relative 'css/cascade'
 
 module CSS
   class ParseError < StandardError
@@ -44,6 +46,22 @@ module CSS
     def parse_selector_list(input) = Selectors::Parser.parse_selector_list(input)
     def parse_selector(input)      = Selectors::Parser.parse_selector(input)
     def parse_anb(input)           = Selectors::AnBParser.parse(input)
+
+    def specificity(selector) = Selectors::SpecificityCalculator.calculate(selector)
+
+    def matches?(element, selector) = Selectors::Matcher.matches?(element, selector)
+
+    def parse_media_query_list(input) = MediaQueries::Parser.parse(input)
+
+    def media_matches?(query_list, context)
+      ql = query_list.is_a?(String) ? MediaQueries::Parser.parse(query_list) : query_list
+      ctx = context.is_a?(MediaQueries::Context) ? context : MediaQueries::Context.default(**context.to_h)
+      MediaQueries::Evaluator.evaluate(ql, ctx)
+    end
+
+    def cascade(stylesheet, context: MediaQueries::Context.default)
+      Cascade.new(stylesheet, context:)
+    end
 
     def desugar(stylesheet) = Nesting.desugar(stylesheet)
 

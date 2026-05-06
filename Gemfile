@@ -4,5 +4,6 @@ gemspec
 
 group :development, :test do
   gem 'minitest'
+  gem 'nokogiri'
   gem 'rake'
 end
