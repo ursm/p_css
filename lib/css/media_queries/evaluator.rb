@@ -11,17 +11,17 @@ module CSS
       EM_PX = 16.0
 
       LENGTH_UNITS_PX = {
-        'px' => 1.0,
-        'em' => EM_PX,
+        'px'  => 1.0,
+        'em'  => EM_PX,
         'rem' => EM_PX,
-        'ex' => EM_PX * 0.5,
-        'ch' => EM_PX * 0.5,
-        'pt' => 96.0 / 72,
-        'pc' => 16.0,
-        'in' => 96.0,
-        'cm' => 96.0 / 2.54,
-        'mm' => 96.0 / 25.4,
-        'q'  => 96.0 / 25.4 / 4
+        'ex'  => EM_PX * 0.5,
+        'ch'  => EM_PX * 0.5,
+        'pt'  => 96.0 / 72,
+        'pc'  => 16.0,
+        'in'  => 96.0,
+        'cm'  => 96.0 / 2.54,
+        'mm'  => 96.0 / 25.4,
+        'q'   => 96.0 / 25.4 / 4
       }.freeze
 
       RESOLUTION_UNITS_DPPX = {
@@ -30,6 +30,12 @@ module CSS
         'dpi'  => 1.0 / 96,
         'dpcm' => 2.54 / 96
       }.freeze
+
+      RESOLUTION_FEATURES = %w[resolution].freeze
+
+      INVERSE_OP = {lt: :gt, le: :ge, gt: :lt, ge: :le, eq: :eq}.freeze
+
+      PREFIX_OP = {min: :ge, max: :le}.freeze
 
       def evaluate(query_list, context)
         query_list.queries.any? { evaluate_query(it, context) }
@@ -92,22 +98,16 @@ module CSS
       end
 
       def compare(prefix, op, ctx_value, feature_value, ctx_name)
-        op = case prefix
-             when :min then :ge
-             when :max then :le
-             else           op
-             end
+        op = PREFIX_OP[prefix] || op
 
-        if ident_compare?(feature_value)
-          string_op_apply(op, ctx_value.to_s, feature_value.value.to_s)
-        else
-          a = numeric_for(ctx_name, ctx_value)
-          b = numeric_for(ctx_name, feature_value)
+        return string_op_apply(op, ctx_value.to_s, feature_value.value.to_s) if ident_compare?(feature_value)
 
-          return false if a.nil? || b.nil?
+        a = numeric_for(ctx_name, ctx_value)
+        b = numeric_for(ctx_name, feature_value)
 
-          numeric_op_apply(op, a, b)
-        end
+        return false if a.nil? || b.nil?
+
+        numeric_op_apply(op, a, b)
       end
 
       def ident_compare?(feature_value)
@@ -146,19 +146,12 @@ module CSS
       end
 
       def dimension_to_canonical(token, ctx_name)
-        unit = token.unit.downcase
-        v    = token.value.to_f
+        unit  = token.unit.downcase
+        table = RESOLUTION_FEATURES.include?(ctx_name) ? RESOLUTION_UNITS_DPPX : LENGTH_UNITS_PX
 
-        if RESOLUTION_FEATURES.include?(ctx_name)
-          factor = RESOLUTION_UNITS_DPPX[unit]
-          return factor && v * factor
-        end
-
-        factor = LENGTH_UNITS_PX[unit]
-        factor && v * factor
+        factor = table[unit]
+        factor && token.value.to_f * factor
       end
-
-      RESOLUTION_FEATURES = %w[resolution].freeze
     end
   end
 end

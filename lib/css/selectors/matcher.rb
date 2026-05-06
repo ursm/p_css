@@ -55,32 +55,28 @@ module CSS
         return false unless match_compound(element, complex.compounds[index])
         return true  if index.zero?
 
-        case complex.combinators[index - 1]
-        when :descendant
-          ancestor = parent_element(element)
+        prev = index - 1
 
-          while ancestor
-            return true if match_at(ancestor, complex, index - 1)
-
-            ancestor = parent_element(ancestor)
-          end
-
-          false
-        when :child
-          match_at(parent_element(element), complex, index - 1)
-        when :next_sibling
-          match_at(previous_element(element), complex, index - 1)
-        when :subsequent_sibling
-          sibling = previous_element(element)
-
-          while sibling
-            return true if match_at(sibling, complex, index - 1)
-
-            sibling = previous_element(sibling)
-          end
-
-          false
+        case complex.combinators[prev]
+        when :descendant         then walk_until_match(element, complex, prev, :parent_element)
+        when :child              then match_at(parent_element(element), complex, prev)
+        when :next_sibling       then match_at(previous_element(element), complex, prev)
+        when :subsequent_sibling then walk_until_match(element, complex, prev, :previous_element)
         end
+      end
+
+      # Steps along the DOM via `direction` until a candidate matches the
+      # remaining complex selector or the chain runs out.
+      def walk_until_match(element, complex, index, direction)
+        candidate = send(direction, element)
+
+        while candidate
+          return true if match_at(candidate, complex, index)
+
+          candidate = send(direction, candidate)
+        end
+
+        false
       end
 
       def match_compound(element, compound)
@@ -345,19 +341,22 @@ module CSS
         token&.value
       end
 
+      # CSS3 :empty semantics — element children always disqualify;
+      # whitespace-only text content does not. Comments / PIs / doctypes
+      # are ignored.
       def empty?(element)
         return false unless element.respond_to?(:children)
 
-        element.children.each {|child|
-          if child.respond_to?(:element?)
-            return false if child.element?
-          elsif child.respond_to?(:tag_name) || child.respond_to?(:name) && !child.is_a?(String)
+        element.children.each do |child|
+          if child.respond_to?(:element?) && child.element?
             return false
           end
 
-          text = child.respond_to?(:text) ? child.text : (child.respond_to?(:to_s) ? child.to_s : '')
-          return false if text.match?(/\S/)
-        }
+          if child.respond_to?(:text?) && child.text?
+            content = child.respond_to?(:content) ? child.content : child.text
+            return false if content.to_s.match?(/\S/)
+          end
+        end
 
         true
       end
@@ -371,15 +370,12 @@ module CSS
 
       def attr(element, name)
         v = element[name]
-
         return v unless v.nil?
 
         lower = name.downcase
-        return element[lower] unless name == lower
+        return nil if name == lower
 
-        nil
-      rescue StandardError
-        nil
+        element[lower]
       end
 
       def class_list(element)
@@ -395,18 +391,21 @@ module CSS
         p
       end
 
-      def previous_element(element)
-        return element.previous_element         if element.respond_to?(:previous_element)
-        return element.previous_element_sibling if element.respond_to?(:previous_element_sibling)
+      SIBLING_METHODS = {
+        previous: %i[previous_element previous_element_sibling previous_sibling],
+        next:     %i[next_element     next_element_sibling     next_sibling]
+      }.freeze
 
-        walk_sibling(element, :previous_sibling)
-      end
+      def previous_element(element) = adjacent_element(element, :previous)
+      def next_element(element)     = adjacent_element(element, :next)
 
-      def next_element(element)
-        return element.next_element         if element.respond_to?(:next_element)
-        return element.next_element_sibling if element.respond_to?(:next_element_sibling)
+      def adjacent_element(element, direction)
+        primary, alt, fallback = SIBLING_METHODS.fetch(direction)
 
-        walk_sibling(element, :next_sibling)
+        return element.send(primary) if element.respond_to?(primary)
+        return element.send(alt)     if element.respond_to?(alt)
+
+        walk_sibling(element, fallback)
       end
 
       def walk_sibling(element, direction)

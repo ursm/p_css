@@ -10,12 +10,12 @@ module CSS
     # Out of scope (intermediate plan): namespace prefixes, the column
     # combinator `||`, and forgiving vs strict selector list distinctions.
     class Parser
-      EOF_TOKEN = Token.new(:eof).freeze
+      include CSS::TokenCursor
 
       # `:has()` is intentionally excluded — it takes a *relative* selector
-       # list (each item may start with a combinator) which would require
-       # extending the ComplexSelector AST. Falls back to opaque component
-       # values for now.
+      # list (each item may start with a combinator) which would require
+      # extending the ComplexSelector AST. Falls back to opaque component
+      # values for now.
       SELECTOR_LIST_PSEUDOS = %w[is where not matches].freeze
       ANB_PSEUDOS           = %w[nth-child nth-last-child nth-of-type nth-last-of-type].freeze
 
@@ -77,8 +77,7 @@ module CSS
       BRACKET_CLOSE_TYPE_FOR_OPEN = BRACKET_OPEN_CHAR.to_h {|type, ch| [ch, BRACKET_CLOSE_TYPE.fetch(type)] }.freeze
 
       def initialize(tokens)
-        @tokens = tokens
-        @pos    = 0
+        init_cursor(tokens)
       end
 
       def parse_selector_list_complete
@@ -142,24 +141,6 @@ module CSS
       end
 
       private
-
-      def parse_error!(message)
-        raise ParseError.new(message, position: peek.position)
-      end
-
-      def peek(offset = 0)
-        @tokens[@pos + offset] || EOF_TOKEN
-      end
-
-      def consume
-        tok = @tokens[@pos] || EOF_TOKEN
-        @pos += 1
-        tok
-      end
-
-      def skip_whitespace
-        consume while peek.type == :whitespace
-      end
 
       def consume_whitespace_returning_bool
         consumed = false

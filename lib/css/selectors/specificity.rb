@@ -7,10 +7,18 @@ module CSS
     Specificity = Data.define(:a, :b, :c) do
       include Comparable
 
+      # Avoids the per-call allocation of two 3-element arrays — this
+      # comparison runs many times in the cascade-sort hot path.
       def <=>(other)
         return nil unless other.is_a?(Specificity)
 
-        [a, b, c] <=> [other.a, other.b, other.c]
+        d = a - other.a
+        return d unless d.zero?
+
+        d = b - other.b
+        return d unless d.zero?
+
+        c - other.c
       end
 
       def +(other)

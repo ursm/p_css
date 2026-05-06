@@ -3,10 +3,9 @@ module CSS
     # Parser for the An+B microsyntax used by `:nth-child(...)` and friends.
     # https://drafts.csswg.org/css-syntax/#anb-microsyntax
     module AnBParser
-      EOF_TOKEN          = Token.new(:eof).freeze
-      TRAILING_DASH_INT  = /\A-(\d+)\z/.freeze
-      N_TRAILING_INT     = /\An(-\d+)?\z/i.freeze
-      DASH_N_TRAILING    = /\A-n(-\d+)?\z/i.freeze
+      TRAILING_DASH_INT = /\A-(\d+)\z/.freeze
+      N_TRAILING_INT    = /\An(-\d+)?\z/i.freeze
+      DASH_N_TRAILING   = /\A-n(-\d+)?\z/i.freeze
 
       module_function
 
@@ -16,9 +15,10 @@ module CSS
       end
 
       class Impl
+        include CSS::TokenCursor
+
         def initialize(tokens)
-          @tokens = tokens
-          @pos    = 0
+          init_cursor(tokens)
         end
 
         def parse
@@ -36,20 +36,6 @@ module CSS
         end
 
         private
-
-        def peek(offset = 0)
-          @tokens[@pos + offset] || EOF_TOKEN
-        end
-
-        def consume
-          tok = @tokens[@pos] || EOF_TOKEN
-          @pos += 1
-          tok
-        end
-
-        def skip_whitespace
-          consume while peek.type == :whitespace
-        end
 
         def parse_value
           t = peek

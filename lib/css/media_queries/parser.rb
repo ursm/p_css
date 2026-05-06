@@ -7,7 +7,7 @@ module CSS
     # so `(...)` becomes a `SimpleBlock`) or an Array of component values
     # (for use against an `@media` rule's prelude from the main parser).
     class Parser
-      EOF_TOKEN = Token.new(:eof).freeze
+      include CSS::TokenCursor
 
       MODIFIER_KEYWORDS = %w[not only].freeze
       LOGICAL_KEYWORDS  = %w[and or not].freeze
@@ -25,8 +25,7 @@ module CSS
       end
 
       def initialize(items)
-        @items = items
-        @pos   = 0
+        init_cursor(items)
       end
 
       def parse_media_query_list
@@ -277,15 +276,9 @@ module CSS
       end
 
       # `value op name` swaps to `name (inverted op) value`.
-      def invert_op(op)
-        case op
-        when :lt then :gt
-        when :le then :ge
-        when :gt then :lt
-        when :ge then :le
-        else          op
-        end
-      end
+      INVERSE_OP = {lt: :gt, le: :ge, gt: :lt, ge: :le, eq: :eq}.freeze
+
+      def invert_op(op) = INVERSE_OP.fetch(op, op)
 
       def parse_mf_value
         item = peek
@@ -359,8 +352,6 @@ module CSS
 
         return nil unless MODIFIER_KEYWORDS.include?(kw)
 
-        # Look ahead: if there's a colon or comparison after, this isn't a
-        # modifier — it's a feature name (boolean) like `not`.
         consume
         kw.to_sym
       end
@@ -368,37 +359,6 @@ module CSS
       def keyword?(kw)
         item = peek
         item.is_a?(Token) && item.type == :ident && item.value.downcase == kw
-      end
-
-      def peek(offset = 0)
-        @items[@pos + offset] || EOF_TOKEN
-      end
-
-      # Convenience for code paths that only care about Token-typed items.
-      def peek_token
-        item = peek
-        item.is_a?(Token) ? item : EOF_TOKEN
-      end
-
-      def consume
-        item = @items[@pos] || EOF_TOKEN
-        @pos += 1
-        item
-      end
-
-      def skip_whitespace
-        while (item = peek).is_a?(Token) && item.type == :whitespace
-          consume
-        end
-      end
-
-      def eof?
-        @pos >= @items.length
-      end
-
-      def parse_error!(message)
-        pos = peek.is_a?(Token) ? peek.position : nil
-        raise ParseError.new(message, position: pos)
       end
 
       def describe(item)
