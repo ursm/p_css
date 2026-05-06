@@ -1,0 +1,107 @@
+module CSS
+  module MediaQueries
+    module Node
+    end
+
+    type modifier = :not | :only
+
+    type comparison_op = :eq | :lt | :le | :gt | :ge
+
+    type media_condition = MediaNot | MediaAnd | MediaOr | MediaFeature | GeneralEnclosed
+
+    type feature_value = Token | Ratio
+
+    class MediaQueryList < Data
+      include Node
+
+      attr_reader queries: Array[MediaQuery]
+
+      def self.new: (queries: Array[MediaQuery]) -> MediaQueryList
+    end
+
+    class MediaQuery < Data
+      include Node
+
+      attr_reader modifier: modifier?
+      attr_reader type: String?
+      attr_reader condition: media_condition?
+
+      def self.new: (modifier: modifier?, type: String?, condition: media_condition?) -> MediaQuery
+    end
+
+    class MediaNot < Data
+      include Node
+
+      attr_reader operand: media_condition
+
+      def self.new: (operand: media_condition) -> MediaNot
+    end
+
+    class MediaAnd < Data
+      include Node
+
+      attr_reader operands: Array[media_condition]
+
+      def self.new: (operands: Array[media_condition]) -> MediaAnd
+    end
+
+    class MediaOr < Data
+      include Node
+
+      attr_reader operands: Array[media_condition]
+
+      def self.new: (operands: Array[media_condition]) -> MediaOr
+    end
+
+    # `op` is `nil` for boolean form (`(color)`), `:eq` for plain
+    # (`(min-width: 600px)`) and explicit `=`, otherwise a comparison.
+    # `value` mirrors that — `nil` for boolean form.
+    class MediaFeature < Data
+      include Node
+
+      attr_reader name: String
+      attr_reader op: comparison_op?
+      attr_reader value: feature_value?
+
+      def self.new: (name: String, op: comparison_op?, value: feature_value?) -> MediaFeature
+    end
+
+    class GeneralEnclosed < Data
+      include Node
+
+      attr_reader tokens: Array[component_value]
+
+      def self.new: (tokens: Array[component_value]) -> GeneralEnclosed
+    end
+
+    class Ratio < Data
+      include Node
+
+      attr_reader numerator: Numeric
+      attr_reader denominator: Numeric
+
+      def self.new: (numerator: Numeric, denominator: Numeric) -> Ratio
+
+      def to_f: () -> Float
+    end
+
+    # User-agent context against which a `MediaQueryList` is evaluated.
+    # `features` is keyed by feature name (no `min-`/`max-` prefix);
+    # values follow Media Queries 4 conventions (lengths in CSS px,
+    # resolution in `dppx`, identifiers as Strings, booleans as 1/0).
+    class Context < Data
+      DEFAULTS: Hash[String, untyped]
+
+      attr_reader features: Hash[String, untyped]
+
+      def self.new: (features: Hash[String, untyped]) -> Context
+
+      # `Context.default('width' => 1200, 'prefers-color-scheme' => 'dark')`
+      def self.default: (**untyped overrides) -> Context
+
+      def []: ((String | Symbol) name) -> untyped
+      def media_type: () -> String
+      def with: (**untyped overrides) -> Context
+    end
+  end
+end

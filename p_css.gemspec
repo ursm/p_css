@@ -19,6 +19,6 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 3.4'
 
-  spec.files = Dir['lib/**/*.rb', 'README.md', 'LICENSE.txt']
+  spec.files = Dir['lib/**/*.rb', 'sig/**/*.rbs', 'README.md', 'LICENSE.txt']
   spec.require_paths = ['lib']
 end

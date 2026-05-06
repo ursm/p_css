@@ -1,0 +1,76 @@
+module CSS
+  module Nodes
+    # `Token` here covers preserved comments when the stylesheet was
+    # parsed with `preserve_comments: true`.
+    type rule = AtRule | QualifiedRule | Token
+
+    type block_item = Declaration | QualifiedRule | AtRule | Token
+
+    class Stylesheet < Data
+      attr_reader rules: Array[rule]
+
+      def self.new: (rules: Array[rule]) -> Stylesheet
+    end
+
+    # `prelude` is the list of component values before `{` or `;`;
+    # `block` is `nil` for at-rules ending with `;` (e.g. `@charset "UTF-8";`).
+    class AtRule < Data
+      attr_reader name: String
+      attr_reader prelude: Array[component_value]
+      attr_reader block: Block?
+
+      def self.new: (name: String, prelude: Array[component_value], block: Block?) -> AtRule
+    end
+
+    class QualifiedRule < Data
+      attr_reader prelude: Array[component_value]
+      attr_reader block: Block
+
+      def self.new: (prelude: Array[component_value], block: Block) -> QualifiedRule
+    end
+
+    class Block < Data
+      attr_reader items: Array[block_item]
+
+      def self.new: (items: Array[block_item]) -> Block
+    end
+
+    class Declaration < Data
+      attr_reader name: String
+      attr_reader value: Array[component_value]
+      attr_reader important: bool
+
+      def self.new: (name: String, value: Array[component_value], important: bool) -> Declaration
+    end
+
+    class Function < Data
+      attr_reader name: String
+      attr_reader value: Array[component_value]
+
+      def self.new: (name: String, value: Array[component_value]) -> Function
+    end
+
+    # `open` is one of `(`, `[`, `{`.
+    class SimpleBlock < Data
+      attr_reader open: String
+      attr_reader value: Array[component_value]
+
+      def self.new: (open: String, value: Array[component_value]) -> SimpleBlock
+
+      def braced?: () -> bool
+      def bracketed?: () -> bool
+      def parenthesized?: () -> bool
+    end
+
+    # Inclusive code-point range produced by `CSS.parse_urange`.
+    class UnicodeRange < Data
+      attr_reader first: Integer
+      attr_reader last: Integer
+
+      def self.new: (first: Integer, last: Integer) -> UnicodeRange
+
+      def cover?: (Integer cp) -> bool
+      def to_s: () -> String
+    end
+  end
+end

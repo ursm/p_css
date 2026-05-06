@@ -1,0 +1,94 @@
+# CSS Syntax Level 4 toolkit — top-level entry points and shared types.
+#
+# Public API surface lives directly on `CSS`; AST nodes live under
+# `CSS::Nodes`, `CSS::Selectors`, and `CSS::MediaQueries`. Per-token
+# source positions are `CSS::Position`.
+module CSS
+  # Inputs that carry CSS source. `String` is tokenized internally; an
+  # array of component values (as produced by `CSS.parse_component_values`
+  # or by reading a rule's `prelude`) is consumed structurally.
+  type input = String | Array[component_value]
+
+  # The output of `CSS.parse_component_value` and the element type of a
+  # rule's `prelude` / declaration's `value`.
+  type component_value = Token | Nodes::Function | Nodes::SimpleBlock
+
+  # Bracket-pair information used by both the parser (open token type →
+  # open char, close token type) and the serializer.
+  BRACKET_OPEN_CHAR: Hash[Symbol, String]
+  BRACKET_CLOSE_TYPE: Hash[Symbol, Symbol]
+  BRACKET_PAIRS: Hash[String, String]
+
+  class ParseError < StandardError
+    attr_reader position: Position?
+
+    def initialize: (String message, ?position: Position?) -> void
+  end
+
+  # 1-based line / column with 0-based character offsets into the
+  # preprocessed input.
+  class Position < Data
+    attr_reader line: Integer
+    attr_reader column: Integer
+    attr_reader offset: Integer
+    attr_reader end_offset: Integer
+
+    def self.new: (line: Integer, column: Integer, offset: Integer, end_offset: Integer) -> Position
+
+    def to_s: () -> String
+  end
+
+  # Tokenization (Syntax 4 §4)
+  # ---------------------------------------------------------------
+
+  def self.tokenize: (String input, ?preserve_comments: bool) -> Array[Token]
+
+  # Parsing (Syntax 4 §5.3)
+  # ---------------------------------------------------------------
+
+  def self.parse_stylesheet: (input input, ?preserve_comments: bool) -> Nodes::Stylesheet
+  def self.parse: (input input, ?preserve_comments: bool) -> Nodes::Stylesheet
+
+  def self.parse_rule: (input input, ?preserve_comments: bool) -> (Nodes::AtRule | Nodes::QualifiedRule)
+  def self.parse_declaration: (input input, ?preserve_comments: bool) -> Nodes::Declaration
+  def self.parse_block_contents: (input input, ?preserve_comments: bool) -> Nodes::Block
+
+  def self.parse_component_value: (input input, ?preserve_comments: bool) -> component_value
+  def self.parse_component_values: (input input, ?preserve_comments: bool) -> Array[component_value]
+  def self.parse_comma_separated_values: (input input, ?preserve_comments: bool) -> Array[Array[component_value]]
+
+  # Selectors (Selectors 4)
+  # ---------------------------------------------------------------
+
+  def self.parse_selector_list: (String | Array[component_value] input) -> Selectors::SelectorList
+  def self.parse_selector: (String | Array[component_value] input) -> Selectors::ComplexSelector
+  def self.parse_anb: (String | Array[Token] input) -> Selectors::AnB
+
+  def self.specificity: (Selectors::Node selector) -> Selectors::Specificity
+
+  type selector = Selectors::SelectorList | Selectors::ComplexSelector | Selectors::CompoundSelector
+
+  def self.matches?: (untyped element, String | selector selector, ?cache: Hash[Integer, untyped]) -> bool
+
+  # Media queries (Media Queries 4)
+  # ---------------------------------------------------------------
+
+  def self.parse_media_query_list: (String | Array[component_value] input) -> MediaQueries::MediaQueryList
+
+  type media_context_input = MediaQueries::Context | Hash[String, untyped]
+
+  def self.media_matches?: (String | MediaQueries::MediaQueryList query_list, media_context_input context) -> bool
+
+  # Other transformations
+  # ---------------------------------------------------------------
+
+  def self.parse_urange: (_ToS input) -> Nodes::UnicodeRange
+
+  def self.desugar: (Nodes::Stylesheet stylesheet) -> Nodes::Stylesheet
+
+  def self.cascade: (Nodes::Stylesheet stylesheet, ?context: MediaQueries::Context) -> Cascade
+
+  def self.serialize: (untyped node) -> String
+
+  VERSION: String
+end

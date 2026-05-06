@@ -1,0 +1,33 @@
+module CSS
+  class Token
+    TYPES: Array[Symbol]
+
+    type token_type =
+      :ident | :function | :at_keyword | :hash | :string | :bad_string
+      | :url | :bad_url | :delim | :number | :percentage | :dimension
+      | :whitespace | :cdo | :cdc | :comment
+      | :colon | :semicolon | :comma
+      | :lbracket | :rbracket | :lparen | :rparen | :lbrace | :rbrace
+      | :eof
+
+    attr_reader type: token_type
+    attr_reader value: untyped
+    attr_reader flag: Symbol?
+    attr_reader unit: String?
+    attr_reader position: Position?
+
+    def initialize: (token_type type, ?untyped value, ?flag: Symbol?, ?unit: String?, ?position: Position?) -> void
+
+    def whitespace?: () -> bool
+    def comment?: () -> bool
+    def trivia?: () -> bool
+
+    def assign_position!: (Position pos) -> self
+
+    def ==: (untyped other) -> bool
+    def eql?: (untyped other) -> bool
+    def hash: () -> Integer
+
+    def inspect: () -> String
+  end
+end

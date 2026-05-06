@@ -1,0 +1,161 @@
+module CSS
+  module Selectors
+    # Marker module included by every Selector AST node so callers can
+    # discriminate `Selectors::Node` from raw component values.
+    module Node
+    end
+
+    type combinator = :descendant | :child | :next_sibling | :subsequent_sibling
+
+    type simple_selector =
+      TypeSelector | UniversalSelector | NestingSelector
+      | IdSelector | ClassSelector | AttributeSelector
+      | PseudoClass | PseudoElement
+
+    type attribute_matcher = :exact | :includes | :dash | :prefix | :suffix | :substring
+
+    type case_flag = :i | :s
+
+    # `argument` is `nil` for plain `:hover` etc., a `SelectorList` for
+    # `:not / :is / :where / :matches`, an `AnB` for `:nth-*`, or an
+    # opaque component-value array for unrecognized functional pseudos
+    # (including `:has`, which is intentionally not parsed as a selector
+    # list yet).
+    type pseudo_argument = nil | SelectorList | AnB | Array[component_value]
+
+    class SelectorList < Data
+      include Node
+
+      attr_reader selectors: Array[ComplexSelector]
+
+      def self.new: (selectors: Array[ComplexSelector]) -> SelectorList
+
+      def to_s: () -> String
+    end
+
+    # `compounds.size == combinators.size + 1`. `combinators[i]` joins
+    # `compounds[i]` to `compounds[i + 1]`.
+    class ComplexSelector < Data
+      include Node
+
+      attr_reader compounds: Array[CompoundSelector]
+      attr_reader combinators: Array[combinator]
+
+      def self.new: (compounds: Array[CompoundSelector], combinators: Array[combinator]) -> ComplexSelector
+
+      def to_s: () -> String
+    end
+
+    class CompoundSelector < Data
+      include Node
+
+      attr_reader components: Array[simple_selector]
+
+      def self.new: (components: Array[simple_selector]) -> CompoundSelector
+
+      def to_s: () -> String
+    end
+
+    class TypeSelector < Data
+      include Node
+
+      attr_reader name: String
+
+      def self.new: (name: String) -> TypeSelector
+    end
+
+    class UniversalSelector < Data
+      include Node
+
+      def self.new: () -> UniversalSelector
+    end
+
+    class NestingSelector < Data
+      include Node
+
+      def self.new: () -> NestingSelector
+    end
+
+    class IdSelector < Data
+      include Node
+
+      attr_reader name: String
+
+      def self.new: (name: String) -> IdSelector
+    end
+
+    class ClassSelector < Data
+      include Node
+
+      attr_reader name: String
+
+      def self.new: (name: String) -> ClassSelector
+    end
+
+    class AttributeSelector < Data
+      include Node
+
+      attr_reader name: String
+      attr_reader matcher: attribute_matcher?
+      attr_reader value: String?
+      attr_reader case_flag: case_flag?
+
+      def self.new: (name: String, matcher: attribute_matcher?, value: String?, case_flag: case_flag?) -> AttributeSelector
+    end
+
+    class PseudoClass < Data
+      include Node
+
+      attr_reader name: String
+      attr_reader argument: pseudo_argument
+
+      def self.new: (name: String, argument: pseudo_argument) -> PseudoClass
+    end
+
+    class PseudoElement < Data
+      include Node
+
+      attr_reader name: String
+      attr_reader argument: pseudo_argument
+
+      def self.new: (name: String, argument: pseudo_argument) -> PseudoElement
+    end
+
+    class AnB < Data
+      include Node
+
+      attr_reader step: Integer
+      attr_reader offset: Integer
+
+      def self.new: (step: Integer, offset: Integer) -> AnB
+
+      def to_s: () -> String
+    end
+
+    # Selectors §16 specificity tuple `(a, b, c)` — id / class+attr+pseudo /
+    # type+pseudo-element counts.
+    class Specificity < Data
+      include Comparable
+
+      ZERO: Specificity
+
+      attr_reader a: Integer
+      attr_reader b: Integer
+      attr_reader c: Integer
+
+      def self.new: (a: Integer, b: Integer, c: Integer) -> Specificity
+
+      def <=>: (untyped other) -> Integer?
+      def +: (Specificity other) -> Specificity
+      def to_s: () -> String
+    end
+
+    module Matcher
+      def self.matches?: (untyped element, untyped selector, ?cache: Hash[Integer, untyped]) -> bool
+
+      def self.tag_of: (untyped element, ?Hash[Integer, untyped]?) -> String
+      def self.id_of: (untyped element, ?Hash[Integer, untyped]?) -> String?
+      def self.classes_of: (untyped element, ?Hash[Integer, untyped]?) -> Set[String]
+    end
+  end
+end

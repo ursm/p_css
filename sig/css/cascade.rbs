@@ -1,0 +1,22 @@
+module CSS
+  # See `CSS.cascade` for the typical entry point.
+  class Cascade
+    type inline_style = String | Nodes::Block | Array[Nodes::Declaration]
+
+    class Match < Data
+      attr_reader declaration: Nodes::Declaration
+      attr_reader specificity: Selectors::Specificity
+      attr_reader inline: bool
+      attr_reader order: Integer
+
+      def self.new: (declaration: Nodes::Declaration, specificity: Selectors::Specificity, inline: bool, order: Integer) -> Match
+    end
+
+    def initialize: (Nodes::Stylesheet stylesheet, ?context: MediaQueries::Context) -> void
+
+    # Returns Hash<String, Declaration> of winning declarations after
+    # !important > inline > stylesheet > specificity > source-order
+    # sorting.
+    def resolve: (untyped element, ?inline_style: inline_style?) -> Hash[String, Nodes::Declaration]
+  end
+end
