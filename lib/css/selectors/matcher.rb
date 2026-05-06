@@ -26,16 +26,24 @@ module CSS
       LINK_TAGS        = %w[a area link].freeze
       RO_INPUT_TYPES   = %w[hidden range color checkbox radio file submit image reset button].freeze
 
-      def matches?(element, selector)
+      # Per-element cache used to avoid recomputing tag / id / class set
+      # for every selector in a hot loop (e.g. `Cascade#resolve` against
+      # hundreds of rules). Keyed by `Object#object_id`; only valid for
+      # the duration of a single matcher invocation.
+      Context = Struct.new(:tag, :id, :classes, keyword_init: true)
+
+      EMPTY_CLASS_SET = Set.new.freeze
+
+      def matches?(element, selector, cache: nil)
         sel = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
 
         case sel
         when SelectorList
-          sel.selectors.any? { match_complex(element, it) }
+          sel.selectors.any? { match_complex(element, it, cache) }
         when ComplexSelector
-          match_complex(element, sel)
+          match_complex(element, sel, cache)
         when CompoundSelector
-          match_compound(element, sel)
+          match_compound(element, sel, cache)
         else
           raise ArgumentError, "expected a selector node or string, got #{sel.class}"
         end
@@ -46,32 +54,32 @@ module CSS
       # Walks the complex selector right-to-left starting at the rightmost
       # compound. Each combinator either succeeds against ancestors /
       # siblings of the current candidate or fails the whole match.
-      def match_complex(element, complex)
-        match_at(element, complex, complex.compounds.size - 1)
+      def match_complex(element, complex, cache)
+        match_at(element, complex, complex.compounds.size - 1, cache)
       end
 
-      def match_at(element, complex, index)
+      def match_at(element, complex, index, cache)
         return false if element.nil?
-        return false unless match_compound(element, complex.compounds[index])
+        return false unless match_compound(element, complex.compounds[index], cache)
         return true  if index.zero?
 
         prev = index - 1
 
         case complex.combinators[prev]
-        when :descendant         then walk_until_match(element, complex, prev, :parent_element)
-        when :child              then match_at(parent_element(element), complex, prev)
-        when :next_sibling       then match_at(previous_element(element), complex, prev)
-        when :subsequent_sibling then walk_until_match(element, complex, prev, :previous_element)
+        when :descendant         then walk_until_match(element, complex, prev, :parent_element, cache)
+        when :child              then match_at(parent_element(element), complex, prev, cache)
+        when :next_sibling       then match_at(previous_element(element), complex, prev, cache)
+        when :subsequent_sibling then walk_until_match(element, complex, prev, :previous_element, cache)
         end
       end
 
       # Steps along the DOM via `direction` until a candidate matches the
       # remaining complex selector or the chain runs out.
-      def walk_until_match(element, complex, index, direction)
+      def walk_until_match(element, complex, index, direction, cache)
         candidate = send(direction, element)
 
         while candidate
-          return true if match_at(candidate, complex, index)
+          return true if match_at(candidate, complex, index, cache)
 
           candidate = send(direction, candidate)
         end
@@ -79,22 +87,61 @@ module CSS
         false
       end
 
-      def match_compound(element, compound)
-        compound.components.all? { match_simple(element, it) }
+      def match_compound(element, compound, cache)
+        compound.components.all? { match_simple(element, it, cache) }
       end
 
-      def match_simple(element, simple)
+      def match_simple(element, simple, cache)
         case simple
-        when TypeSelector      then tag(element).casecmp?(simple.name)
+        when TypeSelector      then tag_of(element, cache).casecmp?(simple.name)
         when UniversalSelector then true
-        when IdSelector        then attr(element, 'id') == simple.name
-        when ClassSelector     then class_list(element).include?(simple.name)
+        when IdSelector        then id_of(element, cache) == simple.name
+        when ClassSelector     then classes_of(element, cache).include?(simple.name)
         when AttributeSelector then match_attribute(element, simple)
-        when PseudoClass       then match_pseudo_class(element, simple)
+        when PseudoClass       then match_pseudo_class(element, simple, cache)
         when PseudoElement     then false
         when NestingSelector   then false
         else                        false
         end
+      end
+
+      # Public — used by `Cascade` for both rule indexing and matching;
+      # callers can share a `cache` Hash with `matches?(cache: cache)`
+      # so each element pays for its tag / id / class set at most once.
+      public
+
+      def tag_of(element, cache = nil)
+        ctx = context_for(element, cache)
+        ctx ? ctx.tag : tag(element)
+      end
+
+      def id_of(element, cache = nil)
+        ctx = context_for(element, cache)
+        ctx ? ctx.id : attr(element, 'id')
+      end
+
+      def classes_of(element, cache = nil)
+        ctx = context_for(element, cache)
+        ctx ? ctx.classes : build_class_set(element)
+      end
+
+      private
+
+      def context_for(element, cache)
+        return nil if cache.nil?
+
+        cache[element.object_id] ||= Context.new(
+          tag:     tag(element),
+          id:      attr(element, 'id'),
+          classes: build_class_set(element)
+        )
+      end
+
+      def build_class_set(element)
+        v = attr(element, 'class')
+        return EMPTY_CLASS_SET if v.nil? || v.empty?
+
+        v.to_s.split(/\s+/).to_set
       end
 
       # Attribute matching ----------------------------------------------
@@ -125,10 +172,10 @@ module CSS
 
       # Pseudo-class matching -------------------------------------------
 
-      def match_pseudo_class(element, pc)
+      def match_pseudo_class(element, pc, cache)
         case pc.name.downcase
-        when 'is', 'where', 'matches'   then match_selector_list_arg(element, pc.argument)
-        when 'not'                       then negate_selector_list_arg(element, pc.argument)
+        when 'is', 'where', 'matches'   then match_selector_list_arg(element, pc.argument, cache)
+        when 'not'                       then negate_selector_list_arg(element, pc.argument, cache)
         when 'has'                       then false
         when 'root'                      then parent_element(element).nil?
         when 'scope'                     then parent_element(element).nil?
@@ -159,12 +206,12 @@ module CSS
         end
       end
 
-      def match_selector_list_arg(element, arg)
-        arg.is_a?(SelectorList) && matches?(element, arg)
+      def match_selector_list_arg(element, arg, cache)
+        arg.is_a?(SelectorList) && matches?(element, arg, cache: cache)
       end
 
-      def negate_selector_list_arg(element, arg)
-        arg.is_a?(SelectorList) && !matches?(element, arg)
+      def negate_selector_list_arg(element, arg, cache)
+        arg.is_a?(SelectorList) && !matches?(element, arg, cache: cache)
       end
 
       def match_nth(element, anb, of_type:, from_end:)

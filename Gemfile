@@ -7,3 +7,7 @@ group :development, :test do
   gem 'nokogiri'
   gem 'rake'
 end
+
+group :development do
+  gem 'stackprof'
+end

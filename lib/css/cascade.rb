@@ -8,9 +8,11 @@ module CSS
   #   - cascade sort: `!important` > origin / inline > specificity > source order
   #
   # The Stylesheet is compiled once on construction (selectors are
-  # pre-parsed, specificities pre-computed, and `@media` chains are
-  # evaluated against the supplied context up-front so non-matching rules
-  # are dropped). `resolve(element)` is then cheap to call per node.
+  # pre-parsed, specificities pre-computed, `@media` chains are
+  # evaluated against the supplied context up-front, and rules are
+  # indexed by the rightmost compound's strongest anchor — id > class >
+  # tag > universal). `resolve(element)` then visits only the rules whose
+  # anchor could match the element.
   #
   # Cascade layers, `@scope` proximity, and Shadow DOM encapsulation are
   # not modeled — `@layer`, `@supports`, `@container`, `@scope`, and
@@ -25,15 +27,20 @@ module CSS
     def initialize(stylesheet, context: MediaQueries::Context.default)
       @context = context
       @entries = compile(stylesheet)
+      @index   = build_index(@entries)
     end
 
     # Returns Hash<String, Declaration> of winning declarations.
     def resolve(element, inline_style: nil)
-      order   = 0
-      matches = []
+      cache       = {}
+      candidates  = collect_candidate_indexes(element, cache)
+      order       = 0
+      matches     = []
 
-      @entries.each do |entry|
-        spec = best_matching_specificity(element, entry.selector_pairs)
+      candidates.each do |idx|
+        entry = @entries[idx]
+        spec  = best_matching_specificity(element, entry.selector_pairs, cache)
+
         next if spec.nil?
 
         entry.declarations.each do |decl|
@@ -53,6 +60,9 @@ module CSS
     end
 
     private
+
+    # Compile
+    # ----------------------------------------------------------------
 
     def compile(stylesheet)
       out = []
@@ -77,7 +87,7 @@ module CSS
     def register_qualified_rule(rule, media_chain, out)
       return unless media_chain.all? { MediaQueries::Evaluator.evaluate(it, @context) }
 
-      sl = Selectors::Parser.parse_selector_list(rule.prelude)
+      sl    = Selectors::Parser.parse_selector_list(rule.prelude)
       pairs = sl.selectors.map { [it, Selectors::SpecificityCalculator.calculate(it)] }
       decls = rule.block.items.select { it.is_a?(Nodes::Declaration) }
 
@@ -102,11 +112,97 @@ module CSS
       # remain unaffected.
     end
 
-    def best_matching_specificity(element, selector_pairs)
+    # Index
+    # ----------------------------------------------------------------
+
+    Index = Data.define(:by_id, :by_class, :by_tag, :universal)
+
+    EMPTY_INDEXES = [].freeze
+
+    def build_index(entries)
+      by_id     = {}
+      by_class  = {}
+      by_tag    = {}
+      universal = []
+
+      entries.each_with_index do |entry, idx|
+        keys = Set.new
+
+        entry.selector_pairs.each do |sel, _spec|
+          key = anchor_key(sel)
+
+          next if keys.include?(key)
+
+          keys << key
+
+          case key.first
+          when :id        then (by_id[key.last]    ||= []) << idx
+          when :class     then (by_class[key.last] ||= []) << idx
+          when :tag       then (by_tag[key.last]   ||= []) << idx
+          when :universal then universal                   << idx
+          end
+        end
+      end
+
+      Index.new(
+        by_id:     by_id.freeze,
+        by_class:  by_class.freeze,
+        by_tag:    by_tag.freeze,
+        universal: universal.freeze
+      )
+    end
+
+    # Picks the strongest anchor in the rightmost compound: id > class >
+    # tag > universal. Compounds whose only simple selectors are pseudos
+    # (e.g. `:hover`) or attribute matchers fall through to universal —
+    # they will be tested against every element, but real-world
+    # stylesheets rarely have many such rules.
+    def anchor_key(complex_selector)
+      compound = complex_selector.compounds.last
+
+      compound.components.each do |c|
+        return [:id, c.name] if c.is_a?(Selectors::IdSelector)
+      end
+      compound.components.each do |c|
+        return [:class, c.name] if c.is_a?(Selectors::ClassSelector)
+      end
+      compound.components.each do |c|
+        return [:tag, c.name.downcase] if c.is_a?(Selectors::TypeSelector)
+      end
+
+      [:universal]
+    end
+
+    # Resolve helpers
+    # ----------------------------------------------------------------
+
+    def collect_candidate_indexes(element, cache)
+      seen = Set.new
+
+      el_id = Selectors::Matcher.id_of(element, cache)
+
+      if el_id && (bucket = @index.by_id[el_id])
+        seen.merge(bucket)
+      end
+
+      Selectors::Matcher.classes_of(element, cache).each do |cls|
+        bucket = @index.by_class[cls]
+        seen.merge(bucket) if bucket
+      end
+
+      tag_bucket = @index.by_tag[Selectors::Matcher.tag_of(element, cache)]
+      seen.merge(tag_bucket) if tag_bucket
+
+      seen.merge(@index.universal)
+
+      seen.to_a.sort!
+    end
+
+    def best_matching_specificity(element, selector_pairs, cache)
       best = nil
 
       selector_pairs.each do |sel, spec|
-        next unless Selectors::Matcher.matches?(element, sel)
+        next unless Selectors::Matcher.matches?(element, sel, cache: cache)
 
         best = spec if best.nil? || spec > best
       end
@@ -114,24 +210,20 @@ module CSS
       best
     end
 
-    # Single-pass: keep the running winner per property name. Cheaper than
-    # group_by + max_by, and more importantly avoids allocating a fresh
-    # comparison key per declaration.
+    # Single-pass running max per property name. Cheaper than group_by +
+    # max_by, and avoids allocating a fresh comparison key per
+    # declaration.
     def pick_winners(matches)
-      winners       = {}
-      winner_matches = {}
+      best = {}
 
       matches.each do |m|
         name      = m.declaration.name
-        incumbent = winner_matches[name]
+        incumbent = best[name]
 
-        if incumbent.nil? || better?(m, incumbent)
-          winners[name]        = m.declaration
-          winner_matches[name] = m
-        end
+        best[name] = m if incumbent.nil? || better?(m, incumbent)
       end
 
-      winners
+      best.transform_values(&:declaration)
     end
 
     # `m` outranks `incumbent` when its priority class is higher, or — at
