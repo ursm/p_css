@@ -24,6 +24,7 @@ module CSS
       @input             = preprocess(input)
       @pos               = 0
       @newlines          = collect_newline_offsets(@input)
+      @newline_cursor    = 0
       @preserve_comments = preserve_comments
     end
 
@@ -127,10 +128,17 @@ module CSS
       end
     end
 
+    # Random access on a non-ascii-only UTF-8 String is O(distance from
+    # the cached character index), and the peek-ahead pattern (`peek`,
+    # `peek(1)`, `peek(2)`) defeats the cache — empirically ~200× slower
+    # than indexing a flat Array. Splitting into `chars` once amortizes
+    # the UTF-8 walk and gives us O(1) random access for the rest of
+    # tokenization.
     def preprocess(input)
-      input.encode('UTF-8').gsub(PREPROCESS_RE) {
-        $~[0] == "\0" ? CodePoints::REPLACEMENT : "\n"
-      }
+      input
+        .encode('UTF-8')
+        .gsub(PREPROCESS_RE) { $~[0] == "\0" ? CodePoints::REPLACEMENT : "\n" }
+        .chars
     end
 
     def peek(offset = 0)
@@ -149,21 +157,34 @@ module CSS
       @pos -= 1
     end
 
-    def collect_newline_offsets(input)
+    def collect_newline_offsets(chars)
       offsets = []
-      i       = -1
+      i       = 0
+      n       = chars.length
 
-      offsets << i while (i = input.index("\n", i + 1))
+      while i < n
+        offsets << i if chars[i] == "\n"
+        i += 1
+      end
+
       offsets
     end
 
-    # Newline characters themselves are reported as belonging to the line
-    # they terminate (col = offset + 1 on line 1, etc).
+    # Newline characters themselves are reported as belonging to the
+    # line they terminate (col = offset + 1 on line 1, etc).
+    #
+    # Tokens are emitted in order, so the offsets passed in are
+    # monotonically non-decreasing. We keep a running cursor into
+    # `@newlines` and advance linearly — amortized O(1) per call,
+    # vs. O(log n) per call with a fresh `bsearch`.
     def line_column_at(offset)
-      idx     = @newlines.bsearch_index { it >= offset } || @newlines.size
-      prev_nl = idx.zero? ? -1 : @newlines[idx - 1]
+      while @newline_cursor < @newlines.size && @newlines[@newline_cursor] < offset
+        @newline_cursor += 1
+      end
 
-      [idx + 1, offset - prev_nl]
+      prev_nl = @newline_cursor.zero? ? -1 : @newlines[@newline_cursor - 1]
+
+      [@newline_cursor + 1, offset - prev_nl]
     end
 
     def whitespace?(c)
