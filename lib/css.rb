@@ -17,6 +17,7 @@ require_relative 'css/parser'
 require_relative 'css/selectors'
 require_relative 'css/serializer'
 require_relative 'css/urange'
+require_relative 'css/nesting'
 
 module CSS
   class ParseError < StandardError
@@ -43,6 +44,8 @@ module CSS
     def parse_selector_list(input) = Selectors::Parser.parse_selector_list(input)
     def parse_selector(input)      = Selectors::Parser.parse_selector(input)
     def parse_anb(input)           = Selectors::AnBParser.parse(input)
+
+    def desugar(stylesheet) = Nesting.desugar(stylesheet)
 
     def serialize(node) = Serializer.serialize(node)
 
