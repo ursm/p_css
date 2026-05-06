@@ -1,12 +1,3 @@
-require_relative 'css/version'
-require_relative 'css/code_points'
-require_relative 'css/token'
-require_relative 'css/tokenizer'
-require_relative 'css/nodes'
-require_relative 'css/parser'
-require_relative 'css/serializer'
-require_relative 'css/urange'
-
 module CSS
   # Bracket information for the three "simple block" pairs. Indexed both by
   # opening token type (for the parser) and by opening character (for the
@@ -14,7 +5,20 @@ module CSS
   BRACKET_OPEN_CHAR  = {lbrace: '{', lbracket: '[', lparen: '('}.freeze
   BRACKET_CLOSE_TYPE = {lbrace: :rbrace, lbracket: :rbracket, lparen: :rparen}.freeze
   BRACKET_PAIRS      = {'{' => '}', '[' => ']', '(' => ')'}.freeze
+end
 
+require_relative 'css/version'
+require_relative 'css/code_points'
+require_relative 'css/escape'
+require_relative 'css/token'
+require_relative 'css/tokenizer'
+require_relative 'css/nodes'
+require_relative 'css/parser'
+require_relative 'css/selectors'
+require_relative 'css/serializer'
+require_relative 'css/urange'
+
+module CSS
   class ParseError < StandardError
     attr_reader :position
 
@@ -35,6 +39,10 @@ module CSS
     def parse_comma_separated_values(input, **opts) = Parser.parse_comma_separated_values(input, **opts)
 
     def parse_urange(input) = Urange.parse(input)
+
+    def parse_selector_list(input) = Selectors::Parser.parse_selector_list(input)
+    def parse_selector(input)      = Selectors::Parser.parse_selector(input)
+    def parse_anb(input)           = Selectors::AnBParser.parse(input)
 
     def serialize(node) = Serializer.serialize(node)
 

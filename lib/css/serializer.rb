@@ -7,7 +7,6 @@ module CSS
   # following the spec rules.
   module Serializer
     extend self
-    extend CodePoints
 
     INDENT = '  '.freeze
 
@@ -21,6 +20,7 @@ module CSS
       when Nodes::Function      then serialize_function(node)
       when Nodes::SimpleBlock   then serialize_simple_block(node)
       when Token                then serialize_token(node)
+      when Selectors::Node      then Selectors::Serializer.serialize(node)
       when Array                then node.map { serialize(it) }.join
       else
         raise ArgumentError, "cannot serialize #{node.class}"
@@ -154,78 +154,9 @@ module CSS
       "#{sign}#{body.sub(/(\.\d*?)0+\z/, '\1').sub(/\.\z/, '.0')}"
     end
 
-    # §9.3.1.
-    def serialize_ident(ident)
-      buf       = +''
-      lone_dash = ident.length == 1 && ident == '-'
-      hyphen0   = ident.start_with?('-')
-
-      ident.each_char.with_index {|c, i|
-        cp = c.ord
-
-        if (esc = escape_control_or_nul(cp))
-          buf << esc
-        elsif i.zero? && lone_dash
-          buf << '\\-'
-        elsif (i.zero? && digit?(c)) || (i == 1 && hyphen0 && digit?(c))
-          buf << format('\\%x ', cp)
-        elsif ident_code_point?(c)
-          buf << c
-        else
-          buf << "\\#{c}"
-        end
-      }
-
-      buf
-    end
-
-    # §9.3 "Serialize a name". Like an ident but allows leading digits and
-    # hyphens, used for unrestricted hash tokens.
-    def serialize_name(name)
-      buf = +''
-
-      name.each_char {|c|
-        cp = c.ord
-
-        if (esc = escape_control_or_nul(cp))
-          buf << esc
-        elsif ident_code_point?(c)
-          buf << c
-        else
-          buf << "\\#{c}"
-        end
-      }
-
-      buf
-    end
-
-    # §9.3.2. Always uses double quotes.
-    def serialize_string(s)
-      buf = +'"'
-
-      s.each_char {|c|
-        cp = c.ord
-
-        if (esc = escape_control_or_nul(cp))
-          buf << esc
-        elsif c == '"' || c == '\\'
-          buf << "\\#{c}"
-        else
-          buf << c
-        end
-      }
-
-      buf << '"'
-    end
-
-    # NUL collapses to U+FFFD per §9.3; controls (0x01..0x1F, 0x7F) get hex
-    # escapes. Returns nil for non-control code points.
-    def escape_control_or_nul(cp)
-      return CodePoints::REPLACEMENT if cp.zero?
-      return format('\\%x ', cp)     if (0x01..0x1F).cover?(cp) || cp == 0x7F
-
-      nil
-    end
+    def serialize_ident(s)  = Escape.ident(s)
+    def serialize_name(s)   = Escape.name(s)
+    def serialize_string(s) = Escape.string(s)
 
     def indent(str)
       str.lines.map { "#{INDENT}#{it}" }.join.then {

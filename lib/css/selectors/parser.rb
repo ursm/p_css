@@ -1,0 +1,414 @@
+module CSS
+  module Selectors
+    # Parser for CSS Selectors Level 4. Covers compound and complex
+    # selectors, the four standard combinators (descendant, child, next-
+    # sibling, subsequent-sibling), pseudo-classes / pseudo-elements
+    # (with recursive parsing of `:not/:is/:where/:has` and AnB parsing of
+    # `:nth-*`), attribute selectors with case-insensitive `i` / `s` flags,
+    # and the `&` nesting selector.
+    #
+    # Out of scope (intermediate plan): namespace prefixes, the column
+    # combinator `||`, and forgiving vs strict selector list distinctions.
+    class Parser
+      EOF_TOKEN = Token.new(:eof).freeze
+
+      # `:has()` is intentionally excluded — it takes a *relative* selector
+       # list (each item may start with a combinator) which would require
+       # extending the ComplexSelector AST. Falls back to opaque component
+       # values for now.
+      SELECTOR_LIST_PSEUDOS = %w[is where not matches].freeze
+      ANB_PSEUDOS           = %w[nth-child nth-last-child nth-of-type nth-last-of-type].freeze
+
+      ATTR_MATCHERS = {
+        '~' => :includes,
+        '|' => :dash,
+        '^' => :prefix,
+        '$' => :suffix,
+        '*' => :substring
+      }.freeze
+
+      class << self
+        def parse_selector_list(input)
+          new(tokens_from(input)).parse_selector_list_complete
+        end
+
+        def parse_selector(input)
+          new(tokens_from(input)).parse_selector_complete
+        end
+
+        private
+
+        def tokens_from(input)
+          return Tokenizer.new(input).tokenize if input.is_a?(String)
+
+          flatten_tokens(input.to_a)
+        end
+
+        # Selectors are normally parsed straight from a token stream, but a
+        # caller may pass a `prelude` from the main parser, which contains
+        # `Function` and `SimpleBlock` AST nodes in place of the raw paren
+        # / bracket tokens. Flatten those back into a token sequence the
+        # selector parser can step through.
+        def flatten_tokens(items)
+          out = []
+
+          items.each {|it|
+            case it
+            when Token
+              out << it
+            when Nodes::SimpleBlock
+              out << Token.new(BRACKET_TYPE_FOR_OPEN.fetch(it.open))
+              out.concat(flatten_tokens(it.value))
+              out << Token.new(BRACKET_CLOSE_TYPE_FOR_OPEN.fetch(it.open))
+            when Nodes::Function
+              out << Token.new(:function, it.name)
+              out.concat(flatten_tokens(it.value))
+              out << Token.new(:rparen)
+            else
+              raise ArgumentError, "cannot feed #{it.class} into selector parser"
+            end
+          }
+
+          out
+        end
+      end
+
+      BRACKET_TYPE_FOR_OPEN       = BRACKET_OPEN_CHAR.invert.freeze
+      BRACKET_CLOSE_TYPE_FOR_OPEN = BRACKET_OPEN_CHAR.to_h {|type, ch| [ch, BRACKET_CLOSE_TYPE.fetch(type)] }.freeze
+
+      def initialize(tokens)
+        @tokens = tokens
+        @pos    = 0
+      end
+
+      def parse_selector_list_complete
+        list = parse_selector_list
+
+        skip_whitespace
+
+        parse_error!("trailing tokens after selector list: #{peek.type}") unless peek.type == :eof
+
+        list
+      end
+
+      def parse_selector_complete
+        skip_whitespace
+
+        cs = parse_complex_selector
+
+        skip_whitespace
+
+        parse_error!("trailing tokens after selector: #{peek.type}") unless peek.type == :eof
+
+        cs
+      end
+
+      # A comma-separated list of complex selectors, terminated by EOF or
+      # `)` (for use inside functional pseudos like `:is(...)`).
+      def parse_selector_list
+        skip_whitespace
+
+        parse_error!('empty selector list') if list_terminator?(peek)
+
+        selectors = [parse_complex_selector]
+
+        loop do
+          skip_whitespace
+          break unless peek.type == :comma
+
+          consume
+          skip_whitespace
+          selectors << parse_complex_selector
+        end
+
+        SelectorList.new(selectors:)
+      end
+
+      def parse_complex_selector
+        skip_whitespace
+
+        compounds   = [parse_compound_selector]
+        combinators = []
+
+        loop do
+          combo = try_consume_combinator
+          break if combo.nil?
+
+          compounds   << parse_compound_selector
+          combinators << combo
+        end
+
+        ComplexSelector.new(compounds:, combinators:)
+      end
+
+      private
+
+      def parse_error!(message)
+        raise ParseError.new(message, position: peek.position)
+      end
+
+      def peek(offset = 0)
+        @tokens[@pos + offset] || EOF_TOKEN
+      end
+
+      def consume
+        tok = @tokens[@pos] || EOF_TOKEN
+        @pos += 1
+        tok
+      end
+
+      def skip_whitespace
+        consume while peek.type == :whitespace
+      end
+
+      def consume_whitespace_returning_bool
+        consumed = false
+
+        while peek.type == :whitespace
+          consume
+          consumed = true
+        end
+
+        consumed
+      end
+
+      def list_terminator?(t)
+        t.type == :eof || t.type == :rparen
+      end
+
+      def try_consume_combinator
+        saved  = @pos
+        had_ws = consume_whitespace_returning_bool
+
+        t = peek
+
+        if t.type == :delim && (combo = combinator_for_delim(t.value))
+          consume
+          skip_whitespace
+          return combo
+        end
+
+        if had_ws && compound_selector_ahead?(t)
+          return :descendant
+        end
+
+        @pos = saved
+        nil
+      end
+
+      def combinator_for_delim(value)
+        case value
+        when '>' then :child
+        when '+' then :next_sibling
+        when '~' then :subsequent_sibling
+        end
+      end
+
+      def compound_selector_ahead?(t)
+        case t.type
+        when :ident, :hash, :lbracket, :colon
+          true
+        when :delim
+          %w[* . &].include?(t.value)
+        else
+          false
+        end
+      end
+
+      def parse_compound_selector
+        components = []
+
+        if (head = try_consume_type_or_universal)
+          components << head
+        end
+
+        loop do
+          sub = try_consume_subclass_or_pseudo
+          break if sub.nil?
+
+          components << sub
+        end
+
+        parse_error!('expected a compound selector') if components.empty?
+
+        CompoundSelector.new(components:)
+      end
+
+      def try_consume_type_or_universal
+        case peek.type
+        when :ident
+          TypeSelector.new(name: consume.value)
+        when :delim
+          case peek.value
+          when '*' then consume; UniversalSelector.new
+          when '&' then consume; NestingSelector.new
+          end
+        end
+      end
+
+      def try_consume_subclass_or_pseudo
+        case peek.type
+        when :hash
+          parse_id_selector
+        when :lbracket
+          parse_attribute_selector
+        when :colon
+          parse_pseudo
+        when :delim
+          case peek.value
+          when '.' then parse_class_selector
+          when '&' then consume; NestingSelector.new
+          end
+        end
+      end
+
+      def parse_id_selector
+        t = consume
+
+        parse_error!('id hash must be a valid identifier') unless t.flag == :id
+
+        IdSelector.new(name: t.value)
+      end
+
+      def parse_class_selector
+        consume # the '.'
+
+        parse_error!("expected ident after '.', got #{peek.type}") unless peek.type == :ident
+
+        ClassSelector.new(name: consume.value)
+      end
+
+      def parse_attribute_selector
+        consume # [
+        skip_whitespace
+
+        parse_error!('expected attribute name') unless peek.type == :ident
+
+        name = consume.value
+
+        skip_whitespace
+
+        matcher, value = parse_attr_matcher_and_value
+        case_flag      = parse_attr_case_flag
+
+        skip_whitespace
+
+        parse_error!("expected ']', got #{peek.type}") unless peek.type == :rbracket
+
+        consume
+
+        AttributeSelector.new(name:, matcher:, value:, case_flag:)
+      end
+
+      def parse_attr_matcher_and_value
+        return [nil, nil] if peek.type == :rbracket
+
+        matcher =
+          if peek.type == :delim && peek.value == '='
+            consume
+            :exact
+          elsif peek.type == :delim && (sym = ATTR_MATCHERS[peek.value])
+            consume
+            unless peek.type == :delim && peek.value == '='
+              parse_error!("expected '=' to complete attribute matcher")
+            end
+            consume
+            sym
+          else
+            parse_error!("invalid attribute matcher: #{peek.type}")
+          end
+
+        skip_whitespace
+
+        unless peek.type == :ident || peek.type == :string
+          parse_error!("expected attribute value, got #{peek.type}")
+        end
+
+        [matcher, consume.value]
+      end
+
+      def parse_attr_case_flag
+        skip_whitespace
+
+        return nil unless peek.type == :ident
+
+        v = peek.value.downcase
+        return nil unless v == 'i' || v == 's'
+
+        consume
+        v.to_sym
+      end
+
+      def parse_pseudo
+        consume # first colon
+
+        if peek.type == :colon
+          consume
+          parse_pseudo_body(element: true)
+        else
+          parse_pseudo_body(element: false)
+        end
+      end
+
+      def parse_pseudo_body(element:)
+        case peek.type
+        when :ident
+          name = consume.value
+          build_pseudo(element:, name:, argument: nil)
+        when :function
+          name = consume.value
+          arg  = parse_pseudo_argument(name)
+
+          parse_error!("expected ')' to close :#{name}") unless peek.type == :rparen
+
+          consume
+          build_pseudo(element:, name:, argument: arg)
+        else
+          parse_error!("expected pseudo-#{element ? 'element' : 'class'} name, got #{peek.type}")
+        end
+      end
+
+      def build_pseudo(element:, name:, argument:)
+        element ? PseudoElement.new(name:, argument:) : PseudoClass.new(name:, argument:)
+      end
+
+      def parse_pseudo_argument(name)
+        n = name.downcase
+
+        if SELECTOR_LIST_PSEUDOS.include?(n)
+          parse_selector_list
+        elsif ANB_PSEUDOS.include?(n)
+          AnBParser.parse(collect_argument_tokens)
+        else
+          collect_argument_tokens
+        end
+      end
+
+      # Collects all tokens up to the closing `)` of the current functional
+      # context, balancing nested parens / functions.
+      def collect_argument_tokens
+        inner = []
+        depth = 0
+
+        loop do
+          case peek.type
+          when :eof
+            parse_error!('unexpected EOF in pseudo argument')
+          when :function, :lparen
+            depth += 1
+            inner << consume
+          when :rparen
+            break if depth.zero?
+
+            depth -= 1
+            inner << consume
+          else
+            inner << consume
+          end
+        end
+
+        inner
+      end
+    end
+  end
+end
