@@ -25,6 +25,7 @@ module CSS
 
     def initialize(input, preserve_comments: false)
       @chars             = preprocess(input)
+      @length            = @chars.length
       @pos               = 0
       @newlines          = collect_newline_offsets(@chars)
       @preserve_comments = preserve_comments
@@ -46,7 +47,7 @@ module CSS
     def next_token
       consume_comments unless @preserve_comments
 
-      return Token.new(:eof) if @pos >= @chars.length
+      return Token.new(:eof) if @pos >= @length
 
       start_offset = @pos
       tok          = consume_one_token
@@ -247,7 +248,7 @@ module CSS
     end
 
     def eof?
-      @pos >= @chars.length
+      @pos >= @length
     end
 
     def consume_whitespace

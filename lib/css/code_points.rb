@@ -11,29 +11,20 @@ module CSS
   module CodePoints
     REPLACEMENT = "�".freeze
 
-    DIGIT_TABLE = Array.new(128, false).tap {|a|
-      (0x30..0x39).each { a[it] = true }
-    }.freeze
+    def self.build_table(*ranges_or_ints)
+      Array.new(128, false).tap {|a|
+        ranges_or_ints.each {|r|
+          if r.is_a?(Range) then r.each { a[it] = true }
+          else                   a[r] = true
+          end
+        }
+      }.freeze
+    end
 
-    HEX_DIGIT_TABLE = Array.new(128, false).tap {|a|
-      (0x30..0x39).each { a[it] = true }
-      (0x41..0x46).each { a[it] = true }
-      (0x61..0x66).each { a[it] = true }
-    }.freeze
-
-    IDENT_START_TABLE = Array.new(128, false).tap {|a|
-      (0x41..0x5A).each { a[it] = true }
-      (0x61..0x7A).each { a[it] = true }
-      a[0x5F] = true # _
-    }.freeze
-
-    IDENT_CP_TABLE = Array.new(128, false).tap {|a|
-      (0x30..0x39).each { a[it] = true }
-      (0x41..0x5A).each { a[it] = true }
-      (0x61..0x7A).each { a[it] = true }
-      a[0x5F] = true # _
-      a[0x2D] = true # -
-    }.freeze
+    DIGIT_TABLE       = build_table(0x30..0x39)
+    HEX_DIGIT_TABLE   = build_table(0x30..0x39, 0x41..0x46, 0x61..0x66)
+    IDENT_START_TABLE = build_table(0x41..0x5A, 0x61..0x7A, 0x5F)
+    IDENT_CP_TABLE    = build_table(0x30..0x39, 0x41..0x5A, 0x61..0x7A, 0x5F, 0x2D)
 
     module_function
 

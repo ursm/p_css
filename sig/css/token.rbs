@@ -22,7 +22,7 @@ module CSS
     def comment?: () -> bool
     def trivia?: () -> bool
 
-    def assign_position!: (Position pos) -> self
+    def assign_source!: (Integer start_offset, Integer end_offset, Array[Integer] newlines) -> self
 
     def ==: (untyped other) -> bool
     def eql?: (untyped other) -> bool

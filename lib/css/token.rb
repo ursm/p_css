@@ -22,14 +22,11 @@ module CSS
     def initialize(type, value = nil, flag: nil, unit: nil, position: nil)
       raise ArgumentError, "unknown token type: #{type.inspect}" unless TYPES.include?(type)
 
-      @type          = type
-      @value         = value
-      @flag          = flag
-      @unit          = unit
-      @position      = position
-      @start_offset  = nil
-      @end_offset    = nil
-      @newlines      = nil
+      @type     = type
+      @value    = value
+      @flag     = flag
+      @unit     = unit
+      @position = position
     end
 
     # Position is intentionally excluded from equality so that hand-built
@@ -61,9 +58,10 @@ module CSS
       type == :whitespace || type == :comment
     end
 
-    # Most tokens never have their `position` read after parsing, so we
-    # build the `Position` Data only on demand. The tokenizer plants the
-    # bare offsets + a shared reference to its newline index.
+    # Most tokens never have their `position` read after parsing, so the
+    # tokenizer plants raw offsets + a shared `@newlines` reference here
+    # via this method, and `Token#position` materializes the `Position`
+    # Data on first read.
     def assign_source!(start_offset, end_offset, newlines)
       @start_offset = start_offset
       @end_offset   = end_offset
@@ -71,27 +69,23 @@ module CSS
       self
     end
 
+    # Returns nil for tokens built without source info (i.e. tokens
+    # constructed by hand or via `Token.new(:eof)`).
     def position
       return @position if @position
-      return nil if @start_offset.nil?
+      return nil unless instance_variable_defined?(:@start_offset)
 
       @position = compute_position
     end
 
-    # Mutating: assigns the token's source position and returns self.
-    # Useful for callers building tokens by hand who already have a
-    # Position; the tokenizer goes through `assign_source!` instead.
-    def assign_position!(pos)
-      @position = pos
-      self
-    end
-
+    # Reads `@position` directly so debug-style introspection doesn't
+    # materialize a `Position` as a side effect.
     def inspect
       parts = ["type=#{type.inspect}"]
       parts << "value=#{value.inspect}" unless value.nil?
       parts << "flag=#{flag.inspect}"   unless flag.nil?
       parts << "unit=#{unit.inspect}"   unless unit.nil?
-      parts << "@#{position}"           unless position.nil?
+      parts << "@#{@position}"          if @position
 
       "#<CSS::Token #{parts.join(' ')}>"
     end
