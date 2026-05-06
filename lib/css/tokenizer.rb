@@ -1,6 +1,10 @@
 module CSS
   # Tokenizer based on CSS Syntax Module Level 3/4 §4.
   # https://www.w3.org/TR/css-syntax-3/#tokenization
+  #
+  # Not thread-safe: an instance carries mutable cursors (`@pos`,
+  # `@newline_cursor`) that advance over the input. Allocate one
+  # tokenizer per thread.
   class Tokenizer
     include CodePoints
 
@@ -21,9 +25,9 @@ module CSS
     PREPROCESS_RE = /\r\n?|\f|\0/.freeze
 
     def initialize(input, preserve_comments: false)
-      @input             = preprocess(input)
+      @chars             = preprocess(input)
       @pos               = 0
-      @newlines          = collect_newline_offsets(@input)
+      @newlines          = collect_newline_offsets(@chars)
       @newline_cursor    = 0
       @preserve_comments = preserve_comments
     end
@@ -44,7 +48,7 @@ module CSS
     def next_token
       consume_comments unless @preserve_comments
 
-      return Token.new(:eof) if @pos >= @input.length
+      return Token.new(:eof) if @pos >= @chars.length
 
       start_offset = @pos
       tok          = consume_one_token
@@ -142,11 +146,11 @@ module CSS
     end
 
     def peek(offset = 0)
-      @input[@pos + offset]
+      @chars[@pos + offset]
     end
 
     def consume
-      c = @input[@pos]
+      c = @chars[@pos]
       return nil if c.nil?
 
       @pos += 1
@@ -263,7 +267,7 @@ module CSS
     end
 
     def eof?
-      @pos >= @input.length
+      @pos >= @chars.length
     end
 
     def consume_whitespace
