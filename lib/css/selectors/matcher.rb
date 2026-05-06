@@ -30,7 +30,7 @@ module CSS
       # for every selector in a hot loop (e.g. `Cascade#resolve` against
       # hundreds of rules). Keyed by `Object#object_id`; only valid for
       # the duration of a single matcher invocation.
-      Context = Struct.new(:tag, :id, :classes, keyword_init: true)
+      Context = Data.define(:tag, :id, :classes)
 
       EMPTY_CLASS_SET = Set.new.freeze
 
@@ -423,10 +423,6 @@ module CSS
         return nil if name == lower
 
         element[lower]
-      end
-
-      def class_list(element)
-        attr(element, 'class').to_s.split(/\s+/)
       end
 
       def parent_element(element)

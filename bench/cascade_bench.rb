@@ -12,17 +12,17 @@ def make_stylesheet
   rules << 'body { margin: 0; color: #333; font-family: sans-serif; }'
   rules << 'a { color: #0066cc; text-decoration: none; }'
 
-  100.times {|i|
+  100.times do |i|
     rules << ".m-#{i} { margin: #{i * 0.25}rem; }"
     rules << ".p-#{i} { padding: #{i * 0.25}rem; }"
     rules << ".text-#{i} { font-size: #{0.5 + i * 0.05}rem; }"
     rules << ".bg-#{i} { background-color: hsl(#{i * 3.6}, 50%, 50%); }"
-  }
+  end
 
-  20.times {|i|
+  20.times do |i|
     rules << ".w-#{i * 5} { width: #{i * 5}%; }"
     rules << ".h-#{i * 5} { height: #{i * 5}%; }"
-  }
+  end
 
   rules << '.btn:hover { background: #0055aa; }'
   rules << '.btn:disabled { opacity: 0.5; }'
@@ -68,15 +68,15 @@ end
 def make_dom
   html = +'<html><body class="m-0 p-0">'
 
-  20.times {|i|
+  20.times do |i|
     html << %(<div class="card panel m-#{i} p-#{i * 2} w-#{(i * 5) % 100} bg-#{i}" data-state="#{%w[active idle warn].sample}">)
     html << %(  <h2 class="title text-#{i + 5}">Card #{i}</h2>)
     html << %(  <div class="body">)
     html << %(    <p class="text-3 m-1">Card body text with some words.</p>)
     html << %(    <ul class="list">)
-    5.times {|j|
+    5.times do |j|
       html << %(      <li class="text-2 m-#{j}">item #{j}</li>)
-    }
+    end
     html << %(    </ul>)
     html << %(    <a href="#x" class="btn link m-2 p-3" data-state="active">Action</a>)
     html << %(    <input type="text" class="input m-1" placeholder="email">)
@@ -85,7 +85,7 @@ def make_dom
     html << %(    <button#{i.even? ? ' disabled' : ''} class="btn m-2">Submit</button>)
     html << %(  </div>)
     html << %(</div>)
-  }
+  end
 
   html << '</body></html>'
   Nokogiri::HTML(html)
@@ -105,12 +105,16 @@ puts "elements:                #{elements.size}"
 # Cascade construction (one-shot, also worth profiling)
 cascade = nil
 build_dur = Time.now
-20.times { cascade = CSS.cascade(stylesheet, context: ctx) }
+20.times do
+  cascade = CSS.cascade(stylesheet, context: ctx)
+end
 build_dur = (Time.now - build_dur) / 20
 puts "cascade build (avg):     %.3fms" % (build_dur * 1000)
 
 # Warmup
-elements.each { cascade.resolve(it, inline_style: it['style']) }
+elements.each do |el|
+  cascade.resolve(el, inline_style: el['style'])
+end
 
 # Hot loop: resolve every element. capybara-simulated's call shape.
 duration = ENV.fetch('DURATION', '5').to_i
@@ -126,7 +130,9 @@ profiler = if ENV['PROFILE']
            end
 
 while Time.now < deadline
-  elements.each {|el| cascade.resolve(el, inline_style: el['style']) }
+  elements.each do |el|
+    cascade.resolve(el, inline_style: el['style'])
+  end
   iterations += 1
 end
 

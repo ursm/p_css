@@ -115,9 +115,8 @@ module CSS
     # Index
     # ----------------------------------------------------------------
 
-    Index = Data.define(:by_id, :by_class, :by_tag, :universal)
-
-    EMPTY_INDEXES = [].freeze
+    Index     = Data.define(:by_id, :by_class, :by_tag, :universal)
+    AnchorKey = Data.define(:kind, :name)
 
     def build_index(entries)
       by_id     = {}
@@ -126,19 +125,19 @@ module CSS
       universal = []
 
       entries.each_with_index do |entry, idx|
-        keys = Set.new
+        seen = Set.new
 
         entry.selector_pairs.each do |sel, _spec|
           key = anchor_key(sel)
 
-          next if keys.include?(key)
+          next if seen.include?(key)
 
-          keys << key
+          seen << key
 
-          case key.first
-          when :id        then (by_id[key.last]    ||= []) << idx
-          when :class     then (by_class[key.last] ||= []) << idx
-          when :tag       then (by_tag[key.last]   ||= []) << idx
+          case key.kind
+          when :id        then (by_id[key.name]    ||= []) << idx
+          when :class     then (by_class[key.name] ||= []) << idx
+          when :tag       then (by_tag[key.name]   ||= []) << idx
           when :universal then universal                   << idx
           end
         end
@@ -158,44 +157,51 @@ module CSS
     # they will be tested against every element, but real-world
     # stylesheets rarely have many such rules.
     def anchor_key(complex_selector)
-      compound = complex_selector.compounds.last
+      class_name = nil
+      tag_name   = nil
 
-      compound.components.each do |c|
-        return [:id, c.name] if c.is_a?(Selectors::IdSelector)
-      end
-      compound.components.each do |c|
-        return [:class, c.name] if c.is_a?(Selectors::ClassSelector)
-      end
-      compound.components.each do |c|
-        return [:tag, c.name.downcase] if c.is_a?(Selectors::TypeSelector)
+      complex_selector.compounds.last.components.each do |c|
+        case c
+        when Selectors::IdSelector    then return AnchorKey.new(kind: :id, name: c.name)
+        when Selectors::ClassSelector then class_name ||= c.name
+        when Selectors::TypeSelector  then tag_name   ||= c.name.downcase
+        end
       end
 
-      [:universal]
+      return AnchorKey.new(kind: :class, name: class_name) if class_name
+      return AnchorKey.new(kind: :tag,   name: tag_name)   if tag_name
+
+      AnchorKey.new(kind: :universal, name: nil)
     end
 
     # Resolve helpers
     # ----------------------------------------------------------------
 
+    # Buckets are appended in source-order at compile time, so each is
+    # already sorted ascending and unique. Concatenating them and using
+    # `sort! + uniq!` is cheaper than going through a `Set`: integers
+    # sort in C, and `uniq!` on a sorted array only removes adjacent
+    # duplicates.
     def collect_candidate_indexes(element, cache)
-      seen = Set.new
+      out = []
 
-      el_id = Selectors::Matcher.id_of(element, cache)
+      el_id  = Selectors::Matcher.id_of(element, cache)
+      bucket = @index.by_id[el_id] if el_id
 
-      if el_id && (bucket = @index.by_id[el_id])
-        seen.merge(bucket)
-      end
+      out.concat(bucket) if bucket
 
       Selectors::Matcher.classes_of(element, cache).each do |cls|
         bucket = @index.by_class[cls]
-        seen.merge(bucket) if bucket
+        out.concat(bucket) if bucket
       end
 
-      tag_bucket = @index.by_tag[Selectors::Matcher.tag_of(element, cache)]
-      seen.merge(tag_bucket) if tag_bucket
+      bucket = @index.by_tag[Selectors::Matcher.tag_of(element, cache)]
+      out.concat(bucket) if bucket
 
-      seen.merge(@index.universal)
-
-      seen.to_a.sort!
+      out.concat(@index.universal)
+      out.sort!
+      out.uniq!
+      out
     end
 
     def best_matching_specificity(element, selector_pairs, cache)
