@@ -24,6 +24,19 @@ module CSS
 
     # A `( ... )`, `[ ... ]`, or `{ ... }` block as a component value.
     # `open` is one of `(`, `[`, `{`. `value` is an array of component values.
-    SimpleBlock = Data.define(:open, :value)
+    SimpleBlock = Data.define(:open, :value) do
+      def braced?      = open == '{'
+      def bracketed?   = open == '['
+      def parenthesized? = open == '('
+    end
+
+    # An inclusive code-point range, e.g. `U+0-7F`. Result of CSS.parse_urange.
+    UnicodeRange = Data.define(:first, :last) do
+      def cover?(cp) = (first..last).cover?(cp)
+
+      def to_s
+        first == last ? format('U+%X', first) : format('U+%X-%X', first, last)
+      end
+    end
   end
 end

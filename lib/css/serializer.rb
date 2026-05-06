@@ -7,11 +7,10 @@ module CSS
   # following the spec rules.
   module Serializer
     extend self
+    extend CodePoints
 
     INDENT = '  '.freeze
 
-    # Serialize any AST node, token, or array of component values to a CSS
-    # string.
     def serialize(node)
       case node
       when Nodes::Stylesheet    then serialize_stylesheet(node)
@@ -40,11 +39,7 @@ module CSS
       prelude_str = serialize(rule.prelude)
       head += " #{prelude_str}" unless prelude_str.empty?
 
-      if rule.block
-        "#{head} #{serialize_block(rule.block)}"
-      else
-        "#{head};"
-      end
+      rule.block ? "#{head} #{serialize_block(rule.block)}" : "#{head};"
     end
 
     def serialize_qualified_rule(rule)
@@ -60,22 +55,18 @@ module CSS
 
     def serialize_declaration(decl)
       important = decl.important ? ' !important' : ''
-      value     = serialize(decl.value)
-
-      "#{serialize_ident(decl.name)}: #{value}#{important};"
+      "#{serialize_ident(decl.name)}: #{serialize(decl.value)}#{important};"
     end
 
     def serialize_function(fn)
       "#{serialize_ident(fn.name)}(#{serialize(fn.value)})"
     end
 
-    SIMPLE_BLOCK_CLOSE = {'(' => ')', '[' => ']', '{' => '}'}.freeze
-
     def serialize_simple_block(block)
-      "#{block.open}#{serialize(block.value)}#{SIMPLE_BLOCK_CLOSE.fetch(block.open)}"
+      "#{block.open}#{serialize(block.value)}#{BRACKET_PAIRS.fetch(block.open)}"
     end
 
-    # §9.3 Serialization of tokens.
+    # §9.3.
     def serialize_token(t)
       case t.type
       when :ident      then serialize_ident(t.value)
@@ -90,6 +81,7 @@ module CSS
       when :percentage then "#{serialize_number(t.value, :integer)}%"
       when :dimension  then serialize_dimension(t)
       when :whitespace then ' '
+      when :comment    then "/*#{t.value}*/"
       when :cdo        then '<!--'
       when :cdc        then '-->'
       when :colon      then ':'
@@ -106,11 +98,7 @@ module CSS
     end
 
     def serialize_hash(t)
-      if t.flag == :id
-        "##{serialize_ident(t.value)}"
-      else
-        "##{serialize_name(t.value)}"
-      end
+      t.flag == :id ? "##{serialize_ident(t.value)}" : "##{serialize_name(t.value)}"
     end
 
     def serialize_dimension(t)
@@ -127,7 +115,7 @@ module CSS
       end
     end
 
-    # §9.3.6 Serialize a number. We avoid E-notation entirely.
+    # §9.3.6. Avoids E-notation entirely.
     def serialize_number(value, flag)
       case
       when value.is_a?(Integer) && flag != :number
@@ -137,56 +125,51 @@ module CSS
       when value.finite?
         format_finite_float(value)
       else
-        # NaN/Infinity can't be represented in CSS; fall back to "0".
         '0'
       end
     end
 
     def format_finite_float(f)
-      # Ruby's Float#to_s uses E-notation for very small / very large values.
-      # Build a decimal form when needed.
       s = f.to_s
-
       return s unless s.match?(/[eE]/)
 
-      sign = f.negative? ? '-' : ''
-      mantissa, exp = s.sub(/\A-/, '').split(/[eE]/)
-      exp = exp.to_i
-      whole, frac = mantissa.split('.')
-      frac ||= ''
+      sign         = f.negative? ? '-' : ''
+      mantissa, e  = s.sub(/\A-/, '').split(/[eE]/)
+      e            = e.to_i
+      whole, frac  = mantissa.split('.')
+      frac       ||= ''
 
       digits  = whole + frac
-      decimal = whole.length + exp
+      decimal = whole.length + e
 
-      if decimal <= 0
-        body = '0.' + ('0' * -decimal) + digits.sub(/0+\z/, '')
-      elsif decimal >= digits.length
-        body = digits + ('0' * (decimal - digits.length)) + '.0'
-      else
-        body = digits[0, decimal] + '.' + digits[decimal..]
-      end
+      body =
+        if decimal <= 0
+          '0.' + ('0' * -decimal) + digits.sub(/0+\z/, '')
+        elsif decimal >= digits.length
+          digits + ('0' * (decimal - digits.length)) + '.0'
+        else
+          "#{digits[0, decimal]}.#{digits[decimal..]}"
+        end
 
-      body = body.sub(/(\.\d*?)0+\z/, '\1').sub(/\.\z/, '.0')
-      "#{sign}#{body}"
+      "#{sign}#{body.sub(/(\.\d*?)0+\z/, '\1').sub(/\.\z/, '.0')}"
     end
 
-    # §9.3.1 Serialize an identifier.
+    # §9.3.1.
     def serialize_ident(ident)
-      buf = +''
+      buf       = +''
+      lone_dash = ident.length == 1 && ident == '-'
+      hyphen0   = ident.start_with?('-')
 
       ident.each_char.with_index {|c, i|
         cp = c.ord
 
-        if cp.zero?
-          buf << "�"
-        elsif (0x01..0x1F).cover?(cp) || cp == 0x7F
-          buf << format('\\%x ', cp)
-        elsif i.zero? && c == '-' && ident.length == 1
+        if (esc = escape_control_or_nul(cp))
+          buf << esc
+        elsif i.zero? && lone_dash
           buf << '\\-'
-        elsif (i.zero? && digit?(c)) ||
-              (i == 1 && digit?(c) && ident.start_with?('-'))
+        elsif (i.zero? && digit?(c)) || (i == 1 && hyphen0 && digit?(c))
           buf << format('\\%x ', cp)
-        elsif cp >= 0x80 || ident_safe?(c)
+        elsif ident_code_point?(c)
           buf << c
         else
           buf << "\\#{c}"
@@ -196,20 +179,17 @@ module CSS
       buf
     end
 
-    # §9.3 "Serialize a name" — like ident but allows leading digits/hyphens
-    # because hash-token (unrestricted) and similar contexts don't require
-    # ident-start at position 0.
+    # §9.3 "Serialize a name". Like an ident but allows leading digits and
+    # hyphens, used for unrestricted hash tokens.
     def serialize_name(name)
       buf = +''
 
       name.each_char {|c|
         cp = c.ord
 
-        if cp.zero?
-          buf << "�"
-        elsif (0x01..0x1F).cover?(cp) || cp == 0x7F
-          buf << format('\\%x ', cp)
-        elsif cp >= 0x80 || ident_safe?(c)
+        if (esc = escape_control_or_nul(cp))
+          buf << esc
+        elsif ident_code_point?(c)
           buf << c
         else
           buf << "\\#{c}"
@@ -219,17 +199,15 @@ module CSS
       buf
     end
 
-    # §9.3.2 Serialize a string. Always uses double quotes.
+    # §9.3.2. Always uses double quotes.
     def serialize_string(s)
       buf = +'"'
 
       s.each_char {|c|
         cp = c.ord
 
-        if cp.zero?
-          buf << "�"
-        elsif (0x01..0x1F).cover?(cp) || cp == 0x7F
-          buf << format('\\%x ', cp)
+        if (esc = escape_control_or_nul(cp))
+          buf << esc
         elsif c == '"' || c == '\\'
           buf << "\\#{c}"
         else
@@ -238,15 +216,15 @@ module CSS
       }
 
       buf << '"'
-      buf
     end
 
-    def digit?(c)
-      c.match?(/\A\d\z/)
-    end
+    # NUL collapses to U+FFFD per §9.3; controls (0x01..0x1F, 0x7F) get hex
+    # escapes. Returns nil for non-control code points.
+    def escape_control_or_nul(cp)
+      return CodePoints::REPLACEMENT if cp.zero?
+      return format('\\%x ', cp)     if (0x01..0x1F).cover?(cp) || cp == 0x7F
 
-    def ident_safe?(c)
-      c.match?(/\A[A-Za-z0-9_\-]\z/)
+      nil
     end
 
     def indent(str)

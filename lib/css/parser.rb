@@ -5,21 +5,24 @@ module CSS
   class Parser
     include Nodes
 
+    # Shared sentinel returned past the end of the token stream. It has no
+    # position, which is why ParseError messages at EOF show no `line:col:`
+    # prefix.
     EOF_TOKEN = Token.new(:eof).freeze
 
     class << self
-      def parse_stylesheet(input)            = build(input).parse_stylesheet
-      def parse_rule(input)                  = build(input).parse_rule
-      def parse_declaration(input)           = build(input).parse_declaration
-      def parse_block_contents(input)        = build(input).parse_block_contents
-      def parse_component_value(input)       = build(input).parse_component_value
-      def parse_component_values(input)      = build(input).parse_component_values
-      def parse_comma_separated_values(input) = build(input).parse_comma_separated_values
+      def parse_stylesheet(input, **opts)             = build(input, **opts).parse_stylesheet
+      def parse_rule(input, **opts)                   = build(input, **opts).parse_rule
+      def parse_declaration(input, **opts)            = build(input, **opts).parse_declaration
+      def parse_block_contents(input, **opts)         = build(input, **opts).parse_block_contents
+      def parse_component_value(input, **opts)        = build(input, **opts).parse_component_value
+      def parse_component_values(input, **opts)       = build(input, **opts).parse_component_values
+      def parse_comma_separated_values(input, **opts) = build(input, **opts).parse_comma_separated_values
 
       private
 
-      def build(input)
-        tokens = input.is_a?(String) ? Tokenizer.new(input).tokenize : input.to_a
+      def build(input, **opts)
+        tokens = input.is_a?(String) ? Tokenizer.new(input, **opts).tokenize : input.to_a
         new(tokens)
       end
     end
@@ -29,14 +32,12 @@ module CSS
       @pos    = 0
     end
 
-    # §5.3.3 Parse a stylesheet.
+    # §5.3.3.
     def parse_stylesheet
       Stylesheet.new(rules: consume_rule_list(top_level: true))
     end
 
-    # §5.3.4 Parse a rule. Returns a single AtRule or QualifiedRule.
-    # Raises ParseError when the input is empty or contains anything beyond
-    # a single rule.
+    # §5.3.4.
     def parse_rule
       skip_whitespace
 
@@ -57,9 +58,7 @@ module CSS
       rule
     end
 
-    # §5.3.5 Parse a declaration. Returns a Declaration. Raises ParseError on
-    # invalid input. Trailing tokens after the declaration are ignored, per
-    # the spec algorithm.
+    # §5.3.5. Per spec, trailing tokens after the declaration are ignored.
     def parse_declaration
       skip_whitespace
 
@@ -72,15 +71,13 @@ module CSS
       decl
     end
 
-    # §5.4.4 Parse a block's contents. Returns a Block whose items are a mix
-    # of Declarations and nested rules. Used for parsing the content of a
-    # `style="..."` attribute, or for `@page` etc.
+    # §5.4.4. Used for parsing the contents of a `style="..."` attribute,
+    # `@page` blocks, and similar contexts where there is no enclosing `{}`.
     def parse_block_contents
       Block.new(items: collect_block_items(stop_at_close_brace: false))
     end
 
-    # §5.3.7 Parse a component value. Returns a Token, Function, or
-    # SimpleBlock. Raises ParseError on empty input or on extra tokens.
+    # §5.3.7.
     def parse_component_value
       skip_whitespace
 
@@ -95,16 +92,15 @@ module CSS
       cv
     end
 
-    # §5.3.8 Parse a list of component values. Returns an Array.
+    # §5.3.8.
     def parse_component_values
       values = []
       values << consume_component_value until peek.type == :eof
       values
     end
 
-    # §5.3.9 Parse a comma-separated list of component values. Returns an
-    # Array of Arrays. An empty input produces `[[]]`; trailing comma
-    # produces an empty trailing group.
+    # §5.3.9. Empty input produces `[[]]`; a trailing comma produces a
+    # trailing empty group.
     def parse_comma_separated_values
       groups  = []
       current = []
@@ -144,13 +140,14 @@ module CSS
       @pos -= 1
     end
 
+    # Skips whitespace and (when comments are preserved) comment tokens.
     def skip_whitespace
-      consume while peek.type == :whitespace
+      consume while peek.trivia?
     end
 
-    # Consume a list of rules from the current position. At the top level,
-    # CDO and CDC tokens are silently dropped. Inside a block, an unmatched
-    # `}` ends the list.
+    # CDO/CDC tokens are dropped at the top level (legacy HTML wrapping);
+    # inside a block they are treated as the start of a qualified rule.
+    # Comment tokens are passed through into the rules list when present.
     def consume_rule_list(top_level:)
       rules = []
 
@@ -162,6 +159,8 @@ module CSS
           return rules
         when :whitespace, :semicolon
           consume
+        when :comment
+          rules << consume
         when :cdo, :cdc
           if top_level
             consume
@@ -179,7 +178,6 @@ module CSS
       end
     end
 
-    # Consume an at-rule. The current position is at the at-keyword token.
     def consume_at_rule(nested:)
       name    = consume.value
       prelude = []
@@ -205,12 +203,10 @@ module CSS
         end
       end
 
-      trim_leading_whitespace!(prelude)
-      trim_trailing_whitespace!(prelude)
+      strip_whitespace!(prelude)
       AtRule.new(name:, prelude:, block:)
     end
 
-    # Consume a qualified rule. May return nil on parse error.
     def consume_qualified_rule(nested:)
       saved   = @pos
       prelude = []
@@ -239,8 +235,7 @@ module CSS
         when :lbrace
           consume
           block = consume_braced_block
-          trim_leading_whitespace!(prelude)
-          trim_trailing_whitespace!(prelude)
+          strip_whitespace!(prelude)
           return QualifiedRule.new(prelude:, block:)
         else
           prelude << consume_component_value
@@ -248,15 +243,15 @@ module CSS
       end
     end
 
-    # Consume the contents of a `{}` block (declarations + nested rules).
-    # The opening `{` has already been consumed; this consumes through the
-    # matching `}`.
+    # Assumes the opening `{` has already been consumed; consumes through
+    # the matching `}`.
     def consume_braced_block
       Block.new(items: collect_block_items(stop_at_close_brace: true))
     end
 
-    # Shared loop body for both `{}`-terminated blocks (inside a rule) and
+    # Shared loop for both `{}`-terminated blocks (inside a rule) and
     # EOF-terminated block contents (style attribute, `@page`, etc.).
+    # Comment tokens are passed through into the items list when present.
     def collect_block_items(stop_at_close_brace:)
       items = []
 
@@ -269,11 +264,12 @@ module CSS
         when :rbrace
           consume
           return items if stop_at_close_brace
-
-          # Stray `}` outside any block: parse error per spec; skip and
-          # continue.
+          # Stray `}` outside any block: parse error per spec; skip.
+          next
         when :whitespace, :semicolon
           consume
+        when :comment
+          items << consume
         when :at_keyword
           rule = consume_at_rule(nested: true)
           items << rule if rule
@@ -289,13 +285,10 @@ module CSS
       end
     end
 
-    # Try to consume a declaration. Returns the declaration on success, or nil
-    # on failure (in which case the parser position is restored).
-    #
-    # In nested context a token sequence like `a:hover { ... }` looks like the
-    # start of a declaration (`<ident> : ...`). We detect such cases by
-    # noticing a `{}` simple block in the value and treating the input as a
-    # nested qualified rule instead.
+    # In nested context a token sequence like `a:hover { ... }` looks like
+    # the start of a declaration (`<ident> : ...`). We detect such cases by
+    # noticing a `{}` simple block in the value and rolling back so the
+    # caller can re-parse it as a nested qualified rule.
     def try_consume_declaration
       saved = @pos
 
@@ -328,15 +321,13 @@ module CSS
         end
       end
 
-      if value.any? { it.is_a?(SimpleBlock) && it.open == '{' }
+      if value.any? { it.is_a?(SimpleBlock) && it.braced? }
         @pos = saved
         return nil
       end
 
       important = extract_important!(value)
-
-      trim_leading_whitespace!(value)
-      trim_trailing_whitespace!(value)
+      strip_whitespace!(value)
 
       Declaration.new(name:, value:, important:)
     end
@@ -355,9 +346,9 @@ module CSS
     end
 
     def consume_simple_block
-      open_tok  = consume
-      open_char = simple_block_open_char(open_tok.type)
-      end_type  = simple_block_end_type(open_tok.type)
+      open_type = consume.type
+      open_char = BRACKET_OPEN_CHAR.fetch(open_type)
+      end_type  = BRACKET_CLOSE_TYPE.fetch(open_type)
       values    = []
 
       loop do
@@ -398,35 +389,22 @@ module CSS
       Function.new(name:, value: values)
     end
 
-    def simple_block_open_char(type)
-      case type
-      when :lbrace   then '{'
-      when :lbracket then '['
-      when :lparen   then '('
-      end
+    # Strips only whitespace tokens — comments, when present, are preserved
+    # as significant content of preludes/values.
+    def strip_whitespace!(value)
+      value.shift while whitespace_item?(value.first)
+      value.pop   while whitespace_item?(value.last)
     end
 
-    def simple_block_end_type(type)
-      case type
-      when :lbrace   then :rbrace
-      when :lbracket then :rbracket
-      when :lparen   then :rparen
-      end
+    def whitespace_item?(item)
+      item.is_a?(Token) && item.whitespace?
     end
 
-    def trim_leading_whitespace!(value)
-      value.shift while value.first.is_a?(Token) && value.first.type == :whitespace
-    end
-
-    def trim_trailing_whitespace!(value)
-      value.pop while value.last.is_a?(Token) && value.last.type == :whitespace
-    end
-
-    # Strip a trailing `! important` from the value list and return whether it
+    # Strips a trailing `! important` from `value` and returns whether it
     # was present.
     def extract_important!(value)
       i = value.length - 1
-      i -= 1 while i >= 0 && whitespace_token?(value[i])
+      i -= 1 while i >= 0 && trivia_item?(value[i])
 
       return false unless i >= 1
 
@@ -435,7 +413,7 @@ module CSS
       return false unless ident.is_a?(Token) && ident.type == :ident && ident.value.casecmp('important').zero?
 
       j = i - 1
-      j -= 1 while j >= 0 && whitespace_token?(value[j])
+      j -= 1 while j >= 0 && trivia_item?(value[j])
 
       bang = value[j]
 
@@ -445,8 +423,8 @@ module CSS
       true
     end
 
-    def whitespace_token?(item)
-      item.is_a?(Token) && item.type == :whitespace
+    def trivia_item?(item)
+      item.is_a?(Token) && item.trivia?
     end
   end
 end

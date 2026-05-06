@@ -11,7 +11,7 @@ module CSS
   class Token
     TYPES = %i[
       ident function at_keyword hash string bad_string url bad_url
-      delim number percentage dimension whitespace cdo cdc
+      delim number percentage dimension whitespace cdo cdc comment
       colon semicolon comma
       lbracket rbracket lparen rparen lbrace rbrace
       eof
@@ -44,8 +44,25 @@ module CSS
       [type, value, flag, unit].hash
     end
 
-    def with_position(pos)
-      Token.new(type, value, flag:, unit:, position: pos)
+    def whitespace?
+      type == :whitespace
+    end
+
+    def comment?
+      type == :comment
+    end
+
+    # True for tokens that don't carry semantic content — used by the parser
+    # to skip insignificant tokens between meaningful ones.
+    def trivia?
+      type == :whitespace || type == :comment
+    end
+
+    # Mutating: assigns the token's source position and returns self. Used
+    # by the tokenizer so each token requires only a single allocation.
+    def assign_position!(pos)
+      @position = pos
+      self
     end
 
     def inspect
