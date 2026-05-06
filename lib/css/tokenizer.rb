@@ -2,9 +2,8 @@ module CSS
   # Tokenizer based on CSS Syntax Module Level 3/4 §4.
   # https://www.w3.org/TR/css-syntax-3/#tokenization
   #
-  # Not thread-safe: an instance carries mutable cursors (`@pos`,
-  # `@newline_cursor`) that advance over the input. Allocate one
-  # tokenizer per thread.
+  # Not thread-safe: an instance carries a mutable cursor (`@pos`) that
+  # advances over the input. Allocate one tokenizer per thread.
   class Tokenizer
     include CodePoints
 
@@ -28,7 +27,6 @@ module CSS
       @chars             = preprocess(input)
       @pos               = 0
       @newlines          = collect_newline_offsets(@chars)
-      @newline_cursor    = 0
       @preserve_comments = preserve_comments
     end
 
@@ -52,9 +50,8 @@ module CSS
 
       start_offset = @pos
       tok          = consume_one_token
-      line, column = line_column_at(start_offset)
 
-      tok.assign_position!(Position.new(line:, column:, offset: start_offset, end_offset: @pos))
+      tok.assign_source!(start_offset, @pos, @newlines)
     end
 
     private
@@ -172,23 +169,6 @@ module CSS
       end
 
       offsets
-    end
-
-    # Newline characters themselves are reported as belonging to the
-    # line they terminate (col = offset + 1 on line 1, etc).
-    #
-    # Tokens are emitted in order, so the offsets passed in are
-    # monotonically non-decreasing. We keep a running cursor into
-    # `@newlines` and advance linearly — amortized O(1) per call,
-    # vs. O(log n) per call with a fresh `bsearch`.
-    def line_column_at(offset)
-      while @newline_cursor < @newlines.size && @newlines[@newline_cursor] < offset
-        @newline_cursor += 1
-      end
-
-      prev_nl = @newline_cursor.zero? ? -1 : @newlines[@newline_cursor - 1]
-
-      [@newline_cursor + 1, offset - prev_nl]
     end
 
     def whitespace?(c)

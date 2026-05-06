@@ -17,16 +17,19 @@ module CSS
       eof
     ].freeze
 
-    attr_reader :type, :value, :flag, :unit, :position
+    attr_reader :type, :value, :flag, :unit
 
     def initialize(type, value = nil, flag: nil, unit: nil, position: nil)
       raise ArgumentError, "unknown token type: #{type.inspect}" unless TYPES.include?(type)
 
-      @type     = type
-      @value    = value
-      @flag     = flag
-      @unit     = unit
-      @position = position
+      @type          = type
+      @value         = value
+      @flag          = flag
+      @unit          = unit
+      @position      = position
+      @start_offset  = nil
+      @end_offset    = nil
+      @newlines      = nil
     end
 
     # Position is intentionally excluded from equality so that hand-built
@@ -58,8 +61,26 @@ module CSS
       type == :whitespace || type == :comment
     end
 
-    # Mutating: assigns the token's source position and returns self. Used
-    # by the tokenizer so each token requires only a single allocation.
+    # Most tokens never have their `position` read after parsing, so we
+    # build the `Position` Data only on demand. The tokenizer plants the
+    # bare offsets + a shared reference to its newline index.
+    def assign_source!(start_offset, end_offset, newlines)
+      @start_offset = start_offset
+      @end_offset   = end_offset
+      @newlines     = newlines
+      self
+    end
+
+    def position
+      return @position if @position
+      return nil if @start_offset.nil?
+
+      @position = compute_position
+    end
+
+    # Mutating: assigns the token's source position and returns self.
+    # Useful for callers building tokens by hand who already have a
+    # Position; the tokenizer goes through `assign_source!` instead.
     def assign_position!(pos)
       @position = pos
       self
@@ -73,6 +94,20 @@ module CSS
       parts << "@#{position}"           unless position.nil?
 
       "#<CSS::Token #{parts.join(' ')}>"
+    end
+
+    private
+
+    def compute_position
+      idx     = @newlines.bsearch_index { it >= @start_offset } || @newlines.size
+      prev_nl = idx.zero? ? -1 : @newlines[idx - 1]
+
+      Position.new(
+        line:       idx + 1,
+        column:     @start_offset - prev_nl,
+        offset:     @start_offset,
+        end_offset: @end_offset
+      )
     end
   end
 end
