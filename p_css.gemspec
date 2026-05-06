@@ -10,6 +10,13 @@ Gem::Specification.new do |spec|
   spec.homepage    = 'https://github.com/ursm/p_css'
   spec.license     = 'MIT'
 
+  spec.metadata = {
+    'bug_tracker_uri'       => "#{spec.homepage}/issues",
+    'changelog_uri'         => "#{spec.homepage}/releases",
+    'source_code_uri'       => spec.homepage,
+    'rubygems_mfa_required' => 'true'
+  }
+
   spec.required_ruby_version = '>= 3.4'
 
   spec.files = Dir['lib/**/*.rb', 'README.md', 'LICENSE.txt']
