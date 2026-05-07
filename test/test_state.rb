@@ -68,6 +68,18 @@ class TestState < Minitest::Test
     assert CSS.matches?(@item, ':hover', state: {hover: [@item]})
   end
 
+  def test_empty_set_matches_nothing
+    refute CSS.matches?(@item, ':hover', state: {hover: Set.new})
+  end
+
+  def test_false_value_matches_nothing
+    refute CSS.matches?(@item, ':hover', state: {hover: false})
+  end
+
+  def test_nil_value_falls_through_to_default
+    refute CSS.matches?(@item, ':hover', state: {hover: nil})
+  end
+
   # Ancestor propagation -------------------------------------------
 
   def test_hover_propagates_to_ancestors

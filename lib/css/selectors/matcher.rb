@@ -186,7 +186,7 @@ module CSS
       def match_pseudo_class(element, pc, cache, state)
         name = pc.name.downcase
 
-        return state_match?(name, element, state) if STATEFUL_PSEUDOS.include?(name)
+        return match_stateful_pseudo?(name, element, state) if STATEFUL_PSEUDOS.include?(name)
 
         case name
         when 'is', 'where', 'matches'   then match_selector_list_arg(element, pc.argument, cache, state)
@@ -221,18 +221,12 @@ module CSS
         end
       end
 
-      # Resolves a stateful pseudo (`:hover`, `:focus`, etc.) against
-      # the caller-supplied state map. Accepts Symbol or String keys;
-      # values are `true` (always match), a `Set` / `Array` of the
-      # specific elements in that state, or falsy (default behavior —
-      # never match).
-      #
-      # `:hover`, `:active`, and `:focus-within` propagate up the
-      # ancestor chain per Selectors §10. The set members are the
-      # *source* elements (e.g. the deepest hovered node); the matcher
-      # walks each source's ancestors and matches whenever the candidate
-      # appears along the chain.
-      def state_match?(name, element, state)
+      # `:hover` / `:active` / `:focus-within` propagate up the ancestor
+      # chain per Selectors §10 — the Set members are the *source* nodes
+      # (e.g. the deepest hovered element) and any of their ancestors
+      # also matches. Other stateful pseudos match only the explicit
+      # elements in the Set.
+      def match_stateful_pseudo?(name, element, state)
         return false if state.nil?
 
         value = state[name.to_sym] || state[name]
