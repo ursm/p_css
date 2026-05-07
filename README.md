@@ -185,8 +185,9 @@ CSS.matches?(active, 'ul > li:not(:first-child)')        # => true
 ```
 
 Stateful pseudo-classes (`:hover`, `:focus`, `:visited`, validity API states,
-etc.) deliberately return `false` — this matcher is intended for stateless
-analysis. `:has()` is not yet implemented (its argument is kept as opaque
+etc.) return `false` by default — there's no UA in the loop. Pass a `state:`
+Hash to opt in; see [Stateful pseudo-classes](#stateful-pseudo-classes)
+below. `:has()` is not yet implemented (its argument is kept as opaque
 component values).
 
 ### Nesting de-sugar
@@ -269,6 +270,60 @@ The cascade sort follows: `!important` > inline > stylesheet > specificity >
 source order. Cascade layers, `@scope` proximity, and Shadow DOM
 encapsulation are not modeled — `@layer` / `@supports` / `@scope` /
 `@container` / `@starting-style` blocks are descended into unconditionally.
+
+### Stateful pseudo-classes
+
+`:hover`, `:focus`, `:focus-within`, `:focus-visible`, `:active`, `:visited`,
+and `:target` return `false` from the matcher by default. Pass a `state:`
+Hash to override:
+
+```ruby
+state = {
+  hover:           Set[hovered_element],   # match these and their ancestors
+  focus:           Set[focused_element],   # match only this element
+  'focus-within' => Set[el],               # propagates to ancestors
+  active:          true                    # match every element
+}
+
+CSS.matches?(element, ':hover', state: state)
+cascade.resolve(element, state: state)
+```
+
+Values:
+
+- `Set` or `Array` of elements — matches those elements (and, for
+  `:hover`, `:active`, `:focus-within`, their ancestors per Selectors §10)
+- `true` — matches every element
+- falsy / missing — default behavior; never matches
+
+Symbol and String keys are both accepted. Hyphenated names (`focus-within`,
+`focus-visible`) read more naturally as String keys.
+
+#### Limits of stateful matching
+
+The API gives you the primitives but not a policy. Two patterns are
+inherently hard:
+
+- **`hover: true` over-reveals.** Every `:hover`-gated rule matches every
+  element, so multiple dropdowns / popovers / menus all become "visible"
+  simultaneously. Useful for "is this element *potentially* visible
+  somehow?" but not for unique-match queries.
+
+- **Peer-row reveal patterns are unsolvable without mouse position.**
+  Stylesheets like `.row:hover .icon-copy { display: block }` reveal one
+  icon per row when its row is hovered. Per-candidate evaluation (giving
+  each candidate its own ancestor chain in the hover Set) doesn't break
+  the symmetry — every candidate sees its own `.row` ancestor as hovered
+  and reports itself visible. Real browsers disambiguate via the actual
+  mouse position; a headless analyzer can't reproduce that without the
+  test explicitly recording which element it treats as hovered (e.g. via
+  Capybara's `element.hover`).
+
+The recommendation for tools layered on top of p CSS: track explicit hover
+actions and pass the corresponding Set; for queries that depend on
+hover-based uniqueness without an explicit hover, treat them as fragile
+and disambiguate by `text:` / `id:` / data attributes instead of relying
+on stateful CSS.
 
 ### `urange`
 
