@@ -68,7 +68,12 @@ module CSS
 
   type selector = Selectors::SelectorList | Selectors::ComplexSelector | Selectors::CompoundSelector
 
-  def self.matches?: (untyped element, String | selector selector, ?cache: Hash[Integer, untyped]) -> bool
+  # Per-pseudo state. Keys are pseudo-class names (Symbol or String);
+  # values are `true` (match every element), a `Set` / `Array` of the
+  # specific elements in that state, or falsy (no match).
+  type matcher_state = Hash[Symbol | String, bool | Set[untyped] | Array[untyped]]
+
+  def self.matches?: (untyped element, String | selector selector, ?cache: Hash[Integer, untyped], ?state: matcher_state?) -> bool
 
   # Media queries (Media Queries 4)
   # ---------------------------------------------------------------

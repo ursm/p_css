@@ -17,6 +17,6 @@ module CSS
     # Returns Hash<String, Declaration> of winning declarations after
     # !important > inline > stylesheet > specificity > source-order
     # sorting.
-    def resolve: (untyped element, ?inline_style: inline_style?) -> Hash[String, Nodes::Declaration]
+    def resolve: (untyped element, ?inline_style: inline_style?, ?state: matcher_state?) -> Hash[String, Nodes::Declaration]
   end
 end

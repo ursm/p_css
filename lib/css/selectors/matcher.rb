@@ -16,8 +16,9 @@ module CSS
     # protocol out of the box.
     #
     # Pseudo-classes that depend on user-agent state (`:hover`, `:focus`,
-    # `:visited`, validity-API states, `:fullscreen`, etc.) always return
-    # false; this matcher is intended for stateless analysis.
+    # `:visited`, etc.) return false by default; pass an explicit `state:`
+    # mapping to opt into stateful matching. Validity-API and viewport-
+    # only states (`:fullscreen`, `:valid`, …) are not exposed.
     module Matcher
       extend self
 
@@ -25,6 +26,16 @@ module CSS
       INPUT_TAGS       = %w[input textarea select].freeze
       LINK_TAGS        = %w[a area link].freeze
       RO_INPUT_TYPES   = %w[hidden range color checkbox radio file submit image reset button].freeze
+
+      # User-agent state pseudos. The matcher returns `false` for these
+      # unless the caller passes a `state:` Hash describing which
+      # elements (or "all") should match.
+      STATEFUL_PSEUDOS = %w[hover focus focus-within focus-visible active visited target].to_set.freeze
+
+      # Per spec these states propagate up the ancestor chain — if a
+      # descendant is hovered/active/contains-focus, the ancestors
+      # share the state for selector-matching purposes.
+      PROPAGATING_STATEFUL_PSEUDOS = %w[hover active focus-within].to_set.freeze
 
       # Per-element cache used to avoid recomputing tag / id / class set
       # for every selector in a hot loop (e.g. `Cascade#resolve` against
@@ -34,16 +45,16 @@ module CSS
 
       EMPTY_CLASS_SET = Set.new.freeze
 
-      def matches?(element, selector, cache: nil)
+      def matches?(element, selector, cache: nil, state: nil)
         sel = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
 
         case sel
         when SelectorList
-          sel.selectors.any? { match_complex(element, it, cache) }
+          sel.selectors.any? { match_complex(element, it, cache, state) }
         when ComplexSelector
-          match_complex(element, sel, cache)
+          match_complex(element, sel, cache, state)
         when CompoundSelector
-          match_compound(element, sel, cache)
+          match_compound(element, sel, cache, state)
         else
           raise ArgumentError, "expected a selector node or string, got #{sel.class}"
         end
@@ -54,32 +65,32 @@ module CSS
       # Walks the complex selector right-to-left starting at the rightmost
       # compound. Each combinator either succeeds against ancestors /
       # siblings of the current candidate or fails the whole match.
-      def match_complex(element, complex, cache)
-        match_at(element, complex, complex.compounds.size - 1, cache)
+      def match_complex(element, complex, cache, state)
+        match_at(element, complex, complex.compounds.size - 1, cache, state)
       end
 
-      def match_at(element, complex, index, cache)
+      def match_at(element, complex, index, cache, state)
         return false if element.nil?
-        return false unless match_compound(element, complex.compounds[index], cache)
+        return false unless match_compound(element, complex.compounds[index], cache, state)
         return true  if index.zero?
 
         prev = index - 1
 
         case complex.combinators[prev]
-        when :descendant         then walk_until_match(element, complex, prev, :parent_element, cache)
-        when :child              then match_at(parent_element(element), complex, prev, cache)
-        when :next_sibling       then match_at(previous_element(element), complex, prev, cache)
-        when :subsequent_sibling then walk_until_match(element, complex, prev, :previous_element, cache)
+        when :descendant         then walk_until_match(element, complex, prev, :parent_element,   cache, state)
+        when :child              then match_at(parent_element(element), complex, prev, cache, state)
+        when :next_sibling       then match_at(previous_element(element), complex, prev, cache, state)
+        when :subsequent_sibling then walk_until_match(element, complex, prev, :previous_element, cache, state)
         end
       end
 
       # Steps along the DOM via `direction` until a candidate matches the
       # remaining complex selector or the chain runs out.
-      def walk_until_match(element, complex, index, direction, cache)
+      def walk_until_match(element, complex, index, direction, cache, state)
         candidate = send(direction, element)
 
         while candidate
-          return true if match_at(candidate, complex, index, cache)
+          return true if match_at(candidate, complex, index, cache, state)
 
           candidate = send(direction, candidate)
         end
@@ -87,18 +98,18 @@ module CSS
         false
       end
 
-      def match_compound(element, compound, cache)
-        compound.components.all? { match_simple(element, it, cache) }
+      def match_compound(element, compound, cache, state)
+        compound.components.all? { match_simple(element, it, cache, state) }
       end
 
-      def match_simple(element, simple, cache)
+      def match_simple(element, simple, cache, state)
         case simple
         when TypeSelector      then tag_of(element, cache).casecmp?(simple.name)
         when UniversalSelector then true
         when IdSelector        then id_of(element, cache) == simple.name
         when ClassSelector     then classes_of(element, cache).include?(simple.name)
         when AttributeSelector then match_attribute(element, simple)
-        when PseudoClass       then match_pseudo_class(element, simple, cache)
+        when PseudoClass       then match_pseudo_class(element, simple, cache, state)
         when PseudoElement     then false
         when NestingSelector   then false
         else                        false
@@ -172,10 +183,14 @@ module CSS
 
       # Pseudo-class matching -------------------------------------------
 
-      def match_pseudo_class(element, pc, cache)
-        case pc.name.downcase
-        when 'is', 'where', 'matches'   then match_selector_list_arg(element, pc.argument, cache)
-        when 'not'                       then negate_selector_list_arg(element, pc.argument, cache)
+      def match_pseudo_class(element, pc, cache, state)
+        name = pc.name.downcase
+
+        return state_match?(name, element, state) if STATEFUL_PSEUDOS.include?(name)
+
+        case name
+        when 'is', 'where', 'matches'   then match_selector_list_arg(element, pc.argument, cache, state)
+        when 'not'                       then negate_selector_list_arg(element, pc.argument, cache, state)
         when 'has'                       then false
         when 'root'                      then parent_element(element).nil?
         when 'scope'                     then parent_element(element).nil?
@@ -206,12 +221,46 @@ module CSS
         end
       end
 
-      def match_selector_list_arg(element, arg, cache)
-        arg.is_a?(SelectorList) && matches?(element, arg, cache: cache)
+      # Resolves a stateful pseudo (`:hover`, `:focus`, etc.) against
+      # the caller-supplied state map. Accepts Symbol or String keys;
+      # values are `true` (always match), a `Set` / `Array` of the
+      # specific elements in that state, or falsy (default behavior —
+      # never match).
+      #
+      # `:hover`, `:active`, and `:focus-within` propagate up the
+      # ancestor chain per Selectors §10. The set members are the
+      # *source* elements (e.g. the deepest hovered node); the matcher
+      # walks each source's ancestors and matches whenever the candidate
+      # appears along the chain.
+      def state_match?(name, element, state)
+        return false if state.nil?
+
+        value = state[name.to_sym] || state[name]
+
+        return false   if value.nil? || value == false
+        return true    if value == true
+
+        return value.include?(element) unless PROPAGATING_STATEFUL_PSEUDOS.include?(name)
+
+        value.each do |source|
+          cur = source
+
+          while cur
+            return true if cur == element
+
+            cur = parent_element(cur)
+          end
+        end
+
+        false
       end
 
-      def negate_selector_list_arg(element, arg, cache)
-        arg.is_a?(SelectorList) && !matches?(element, arg, cache: cache)
+      def match_selector_list_arg(element, arg, cache, state)
+        arg.is_a?(SelectorList) && matches?(element, arg, cache: cache, state: state)
+      end
+
+      def negate_selector_list_arg(element, arg, cache, state)
+        arg.is_a?(SelectorList) && !matches?(element, arg, cache: cache, state: state)
       end
 
       def match_nth(element, anb, of_type:, from_end:)

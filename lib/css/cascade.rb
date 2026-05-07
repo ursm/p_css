@@ -31,7 +31,11 @@ module CSS
     end
 
     # Returns Hash<String, Declaration> of winning declarations.
-    def resolve(element, inline_style: nil)
+    #
+    # `state:` opts into stateful-pseudo matching — see
+    # `Selectors::Matcher#matches?` for the shape. Defaults to the
+    # stateless behavior (`:hover`, `:focus`, etc. never match).
+    def resolve(element, inline_style: nil, state: nil)
       cache       = {}
       candidates  = collect_candidate_indexes(element, cache)
       order       = 0
@@ -39,7 +43,7 @@ module CSS
 
       candidates.each do |idx|
         entry = @entries[idx]
-        spec  = best_matching_specificity(element, entry.selector_pairs, cache)
+        spec  = best_matching_specificity(element, entry.selector_pairs, cache, state)
 
         next if spec.nil?
 
@@ -204,11 +208,11 @@ module CSS
       out
     end
 
-    def best_matching_specificity(element, selector_pairs, cache)
+    def best_matching_specificity(element, selector_pairs, cache, state)
       best = nil
 
       selector_pairs.each do |sel, spec|
-        next unless Selectors::Matcher.matches?(element, sel, cache: cache)
+        next unless Selectors::Matcher.matches?(element, sel, cache: cache, state: state)
 
         best = spec if best.nil? || spec > best
       end

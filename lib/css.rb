@@ -50,7 +50,7 @@ module CSS
 
     def specificity(selector) = Selectors::SpecificityCalculator.calculate(selector)
 
-    def matches?(element, selector) = Selectors::Matcher.matches?(element, selector)
+    def matches?(element, selector, state: nil) = Selectors::Matcher.matches?(element, selector, state: state)
 
     def parse_media_query_list(input) = MediaQueries::Parser.parse(input)
 

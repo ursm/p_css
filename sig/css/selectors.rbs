@@ -151,7 +151,10 @@ module CSS
     end
 
     module Matcher
-      def self.matches?: (untyped element, untyped selector, ?cache: Hash[Integer, untyped]) -> bool
+      STATEFUL_PSEUDOS: Set[String]
+      PROPAGATING_STATEFUL_PSEUDOS: Set[String]
+
+      def self.matches?: (untyped element, untyped selector, ?cache: Hash[Integer, untyped], ?state: matcher_state?) -> bool
 
       def self.tag_of: (untyped element, ?Hash[Integer, untyped]?) -> String
       def self.id_of: (untyped element, ?Hash[Integer, untyped]?) -> String?
