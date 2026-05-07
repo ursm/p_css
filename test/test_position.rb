@@ -24,7 +24,7 @@ class TestPosition < Minitest::Test
 
   def test_position_with_indented_block
     src = "a {\n  color: red;\n}"
-    color = CSS.tokenize(src).find { it.type == :ident && it.value == 'color' }
+    color = CSS.tokenize(src).find { _1.type == :ident && _1.value == 'color' }
 
     assert_equal 2, color.position.line
     assert_equal 3, color.position.column
@@ -32,7 +32,7 @@ class TestPosition < Minitest::Test
 
   def test_offset_is_index_into_preprocessed_input
     src = "foo bar"
-    bar = CSS.tokenize(src).find { it.value == 'bar' }
+    bar = CSS.tokenize(src).find { _1.value == 'bar' }
 
     assert_equal 4, bar.position.offset
     assert_equal 7, bar.position.end_offset
@@ -40,7 +40,7 @@ class TestPosition < Minitest::Test
 
   def test_position_through_comments
     src = "/* leading */ a"
-    a = CSS.tokenize(src).find { it.type == :ident }
+    a = CSS.tokenize(src).find { _1.type == :ident }
 
     assert_equal 1, a.position.line
     assert_equal 15, a.position.column

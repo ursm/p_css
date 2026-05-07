@@ -12,7 +12,7 @@ module CSS
     extend self
 
     def desugar(stylesheet)
-      Nodes::Stylesheet.new(rules: stylesheet.rules.flat_map { desugar_top_level(it) })
+      Nodes::Stylesheet.new(rules: stylesheet.rules.flat_map { desugar_top_level(_1) })
     end
 
     private
@@ -135,7 +135,7 @@ module CSS
 
     def contains_nesting?(complex_selector)
       complex_selector.compounds.any? {|c|
-        c.components.any? { it.is_a?(Selectors::NestingSelector) }
+        c.components.any? { _1.is_a?(Selectors::NestingSelector) }
       }
     end
 
@@ -159,7 +159,7 @@ module CSS
       replacement = Selectors::PseudoClass.new(name: 'is', argument: parent_list)
 
       Selectors::ComplexSelector.new(
-        compounds:   own_complex.compounds.map { swap_components_in_compound(it, replacement) },
+        compounds:   own_complex.compounds.map { swap_components_in_compound(_1, replacement) },
         combinators: own_complex.combinators
       )
     end

@@ -43,7 +43,7 @@ class TestMatcher < Minitest::Test
   end
 
   def matched_tags(selector)
-    @elements.select { CSS.matches?(it, selector) }.map(&:name)
+    @elements.select { CSS.matches?(_1, selector) }.map(&:name)
   end
 
   def assert_match_tags(selector, expected)
@@ -53,7 +53,7 @@ class TestMatcher < Minitest::Test
                  "selector #{selector.inspect} expected #{expected.inspect}, got #{actual.inspect}"
   end
 
-  def first(selector) = @elements.find { CSS.matches?(it, selector) }
+  def first(selector) = @elements.find { CSS.matches?(_1, selector) }
 
   # Simple selectors -------------------------------------------------
 
@@ -199,21 +199,21 @@ class TestMatcher < Minitest::Test
 
   def test_disabled_inherits_from_fieldset
     # The text input inside the disabled fieldset should be :disabled.
-    fieldset_input = @elements.find { it.name == 'input' && it.parent.name == 'fieldset' }
+    fieldset_input = @elements.find { _1.name == 'input' && _1.parent.name == 'fieldset' }
 
     assert CSS.matches?(fieldset_input, ':disabled')
   end
 
   def test_required_optional
-    required_inputs = @elements.select { it.name == 'input' && CSS.matches?(it, ':required') }
-    optional_inputs = @elements.select { it.name == 'input' && CSS.matches?(it, ':optional') }
+    required_inputs = @elements.select { _1.name == 'input' && CSS.matches?(_1, ':required') }
+    optional_inputs = @elements.select { _1.name == 'input' && CSS.matches?(_1, ':optional') }
 
     assert_equal 1, required_inputs.size
     assert_equal 4, optional_inputs.size
   end
 
   def test_placeholder_shown
-    placeholder_inputs = @elements.select { CSS.matches?(it, 'input:placeholder-shown') }
+    placeholder_inputs = @elements.select { CSS.matches?(_1, 'input:placeholder-shown') }
 
     assert_equal 1, placeholder_inputs.size
   end
@@ -225,13 +225,13 @@ class TestMatcher < Minitest::Test
   # Lang / dir -------------------------------------------------------
 
   def test_lang_inherited_from_root
-    p = @elements.find { it.name == 'p' && it.text =~ /First/ }
+    p = @elements.find { _1.name == 'p' && _1.text =~ /First/ }
 
     assert CSS.matches?(p, ':lang(en)')
   end
 
   def test_lang_overridden_in_subtree
-    ja_p = @elements.find { it.parent.name == 'article' }
+    ja_p = @elements.find { _1.parent.name == 'article' }
 
     assert CSS.matches?(ja_p, ':lang(ja)')
     refute CSS.matches?(ja_p, ':lang(en)')
@@ -253,7 +253,7 @@ class TestMatcher < Minitest::Test
 
   def test_selector_list_ast
     sl = CSS.parse_selector_list('.lead')
-    p_lead = @elements.find { it.name == 'p' && it['class'] == 'lead' }
+    p_lead = @elements.find { _1.name == 'p' && _1['class'] == 'lead' }
 
     assert CSS.matches?(p_lead, sl)
   end

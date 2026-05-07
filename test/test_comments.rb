@@ -22,7 +22,7 @@ class TestComments < Minitest::Test
   def test_preserve_comments_emits_comment_tokens
     ts = CSS.tokenize('/* hello */ a /* world */', preserve_comments: true)
 
-    comments = ts.select { it.type == :comment }
+    comments = ts.select { _1.type == :comment }
 
     assert_equal 2,         comments.size
     assert_equal ' hello ', comments[0].value
@@ -37,7 +37,7 @@ class TestComments < Minitest::Test
   end
 
   def test_comment_token_has_position
-    pos = CSS.tokenize("a\n/* x */", preserve_comments: true).find { it.type == :comment }.position
+    pos = CSS.tokenize("a\n/* x */", preserve_comments: true).find { _1.type == :comment }.position
 
     assert_equal 2, pos.line
     assert_equal 1, pos.column
@@ -48,7 +48,7 @@ class TestComments < Minitest::Test
   def test_top_level_comments_appear_in_rules
     ss = CSS.parse_stylesheet('/* a */ a {} /* b */ b {}', preserve_comments: true)
 
-    types = ss.rules.map { it.is_a?(CSS::Token) ? :comment : :rule }
+    types = ss.rules.map { _1.is_a?(CSS::Token) ? :comment : :rule }
 
     assert_equal %i[comment rule comment rule], types
   end
@@ -57,7 +57,7 @@ class TestComments < Minitest::Test
     ss = CSS.parse_stylesheet('a { /* hi */ color: red; /* there */ }', preserve_comments: true)
 
     items = ss.rules.first.block.items
-    types = items.map { it.is_a?(CSS::Token) ? :comment : it.class.name }
+    types = items.map { _1.is_a?(CSS::Token) ? :comment : _1.class.name }
 
     assert_includes types, :comment
   end

@@ -114,7 +114,7 @@ class TestSerializer < Minitest::Test
     block = CSS.parse_block_contents('color: red; background: blue;')
 
     assert_equal "color: red;\nbackground: blue;",
-                 block.items.map { CSS.serialize(it) }.join("\n")
+                 block.items.map { CSS.serialize(_1) }.join("\n")
   end
 
   def test_serialize_array_of_component_values

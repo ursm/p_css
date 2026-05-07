@@ -21,7 +21,7 @@ module CSS
       when Nodes::SimpleBlock   then serialize_simple_block(node)
       when Token                then serialize_token(node)
       when Selectors::Node      then Selectors::Serializer.serialize(node)
-      when Array                then node.map { serialize(it) }.join
+      when Array                then node.map { serialize(_1) }.join
       else
         raise ArgumentError, "cannot serialize #{node.class}"
       end
@@ -30,7 +30,7 @@ module CSS
     private
 
     def serialize_stylesheet(ss)
-      ss.rules.map { serialize(it) }.join("\n")
+      ss.rules.map { serialize(_1) }.join("\n")
     end
 
     def serialize_at_rule(rule)
@@ -49,7 +49,7 @@ module CSS
     def serialize_block(block)
       return '{}' if block.items.empty?
 
-      inner = block.items.map { serialize(it) }.join("\n")
+      inner = block.items.map { serialize(_1) }.join("\n")
       "{\n#{indent(inner)}\n}"
     end
 
@@ -159,8 +159,8 @@ module CSS
     def serialize_string(s) = Escape.string(s)
 
     def indent(str)
-      str.lines.map { "#{INDENT}#{it}" }.join.then {
-        it.end_with?("\n") ? it.chomp : it
+      str.lines.map { "#{INDENT}#{_1}" }.join.then {
+        _1.end_with?("\n") ? _1.chomp : _1
       }
     end
   end

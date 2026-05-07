@@ -55,7 +55,7 @@ class TestSelectors < Minitest::Test
     cs = first_components('.a.b.c')
 
     assert_equal 3, cs.size
-    assert(cs.all? { it.is_a?(S::ClassSelector) })
+    assert(cs.all? { _1.is_a?(S::ClassSelector) })
   end
 
   # Combinators -------------------------------------------------------

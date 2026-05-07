@@ -89,11 +89,11 @@ module CSS
     end
 
     def register_qualified_rule(rule, media_chain, out)
-      return unless media_chain.all? { MediaQueries::Evaluator.evaluate(it, @context) }
+      return unless media_chain.all? { MediaQueries::Evaluator.evaluate(_1, @context) }
 
       sl    = Selectors::Parser.parse_selector_list(rule.prelude)
-      pairs = sl.selectors.map { [it, Selectors::SpecificityCalculator.calculate(it)] }
-      decls = rule.block.items.select { it.is_a?(Nodes::Declaration) }
+      pairs = sl.selectors.map { [_1, Selectors::SpecificityCalculator.calculate(_1)] }
+      decls = rule.block.items.select { _1.is_a?(Nodes::Declaration) }
 
       out << RuleEntry.new(selector_pairs: pairs, declarations: decls)
     rescue ParseError
@@ -259,9 +259,9 @@ module CSS
 
     def inline_declarations(style)
       case style
-      when String       then CSS.parse_block_contents(style).items.select { it.is_a?(Nodes::Declaration) }
-      when Nodes::Block then style.items.select { it.is_a?(Nodes::Declaration) }
-      when Array        then style.select        { it.is_a?(Nodes::Declaration) }
+      when String       then CSS.parse_block_contents(style).items.select { _1.is_a?(Nodes::Declaration) }
+      when Nodes::Block then style.items.select { _1.is_a?(Nodes::Declaration) }
+      when Array        then style.select        { _1.is_a?(Nodes::Declaration) }
       else
         raise ArgumentError, "cannot derive inline declarations from #{style.class}"
       end

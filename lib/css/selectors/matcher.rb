@@ -50,7 +50,7 @@ module CSS
 
         case sel
         when SelectorList
-          sel.selectors.any? { match_complex(element, it, cache, state) }
+          sel.selectors.any? { match_complex(element, _1, cache, state) }
         when ComplexSelector
           match_complex(element, sel, cache, state)
         when CompoundSelector
@@ -99,7 +99,7 @@ module CSS
       end
 
       def match_compound(element, compound, cache, state)
-        compound.components.all? { match_simple(element, it, cache, state) }
+        compound.components.all? { match_simple(element, _1, cache, state) }
       end
 
       def match_simple(element, simple, cache, state)
@@ -281,10 +281,10 @@ module CSS
         return nil if p.nil?
 
         siblings = element_children(p)
-        siblings = siblings.select { tag(it).casecmp?(tag(element)) } if of_type
+        siblings = siblings.select { tag(_1).casecmp?(tag(element)) } if of_type
         siblings = siblings.reverse if from_end
 
-        idx = siblings.index { same_node?(it, element) }
+        idx = siblings.index { same_node?(_1, element) }
         idx && idx + 1
       end
 
@@ -316,7 +316,7 @@ module CSS
       end
 
       def inside_first_legend?(element, fieldset)
-        first_legend = element_children(fieldset).find { tag(it) == 'legend' }
+        first_legend = element_children(fieldset).find { tag(_1) == 'legend' }
 
         return false if first_legend.nil?
 
@@ -427,7 +427,7 @@ module CSS
       def ident_argument(argument)
         return nil unless argument.is_a?(Array)
 
-        token = argument.find { it.is_a?(Token) && (it.type == :ident || it.type == :string) }
+        token = argument.find { _1.is_a?(Token) && (_1.type == :ident || _1.type == :string) }
         token&.value
       end
 

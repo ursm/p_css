@@ -321,7 +321,7 @@ module CSS
         end
       end
 
-      if value.any? { it.is_a?(SimpleBlock) && it.braced? }
+      if value.any? { _1.is_a?(SimpleBlock) && _1.braced? }
         @pos = saved
         return nil
       end

@@ -14,7 +14,7 @@ module CSS
     def self.build_table(*ranges_or_ints)
       Array.new(128, false).tap {|a|
         ranges_or_ints.each {|r|
-          if r.is_a?(Range) then r.each { a[it] = true }
+          if r.is_a?(Range) then r.each { a[_1] = true }
           else                   a[r] = true
           end
         }

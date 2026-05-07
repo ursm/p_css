@@ -41,7 +41,7 @@ module CSS
 
       def calculate(node)
         case node
-        when SelectorList     then node.selectors.map { calculate(it) }.max || Specificity::ZERO
+        when SelectorList     then node.selectors.map { calculate(_1) }.max || Specificity::ZERO
         when ComplexSelector  then sum(node.compounds)
         when CompoundSelector then sum(node.components)
         when IdSelector       then Specificity.new(a: 1, b: 0, c: 0)
@@ -59,7 +59,7 @@ module CSS
       private
 
       def sum(items)
-        items.map { calculate(it) }.reduce(Specificity::ZERO, :+)
+        items.map { calculate(_1) }.reduce(Specificity::ZERO, :+)
       end
 
       def specificity_of_pseudo_class(node)

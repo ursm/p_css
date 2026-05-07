@@ -21,9 +21,9 @@ module CSS
 
       def serialize(node)
         case node
-        when SelectorList      then node.selectors.map { serialize(it) }.join(', ')
+        when SelectorList      then node.selectors.map { serialize(_1) }.join(', ')
         when ComplexSelector   then serialize_complex(node)
-        when CompoundSelector  then node.components.map { serialize(it) }.join
+        when CompoundSelector  then node.components.map { serialize(_1) }.join
         when TypeSelector      then Escape.ident(node.name)
         when UniversalSelector then '*'
         when NestingSelector   then '&'

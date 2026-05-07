@@ -93,7 +93,7 @@ module CSS
     private
 
     def compute_position
-      idx     = @newlines.bsearch_index { it >= @start_offset } || @newlines.size
+      idx     = @newlines.bsearch_index { _1 >= @start_offset } || @newlines.size
       prev_nl = idx.zero? ? -1 : @newlines[idx - 1]
 
       Position.new(

@@ -38,7 +38,7 @@ module CSS
       PREFIX_OP = {min: :ge, max: :le}.freeze
 
       def evaluate(query_list, context)
-        query_list.queries.any? { evaluate_query(it, context) }
+        query_list.queries.any? { evaluate_query(_1, context) }
       end
 
       private
@@ -65,8 +65,8 @@ module CSS
       def evaluate_condition(node, context)
         case node
         when MediaNot       then !evaluate_condition(node.operand, context)
-        when MediaAnd       then node.operands.all? { evaluate_condition(it, context) }
-        when MediaOr        then node.operands.any? { evaluate_condition(it, context) }
+        when MediaAnd       then node.operands.all? { evaluate_condition(_1, context) }
+        when MediaOr        then node.operands.any? { evaluate_condition(_1, context) }
         when MediaFeature   then evaluate_feature(node, context)
         when GeneralEnclosed then false
         else                      false
