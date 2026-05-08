@@ -207,8 +207,11 @@ module CSS
       AtRule.new(name:, prelude:, block:)
     end
 
+    # On EOF or a stop token (`}` while nested), the rule is dropped per
+    # §5.4.3 — but already-consumed prelude tokens are NOT put back. Rewinding
+    # would leave the caller's cursor at the same starting token and loop
+    # forever on input like `style="hidden"` (no `:` and no `{`).
     def consume_qualified_rule(nested:)
-      saved   = @pos
       prelude = []
 
       loop do
@@ -216,13 +219,9 @@ module CSS
 
         case t.type
         when :eof
-          @pos = saved
           return nil
         when :rbrace
-          if nested
-            @pos = saved
-            return nil
-          end
+          return nil if nested
 
           prelude << consume
         when :semicolon

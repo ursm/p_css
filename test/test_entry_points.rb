@@ -92,6 +92,25 @@ class TestEntryPoints < Minitest::Test
     assert_equal [], block.items
   end
 
+  def test_parse_block_contents_bare_ident_terminates
+    block = CSS.parse_block_contents('hidden')
+
+    assert_equal [], block.items
+  end
+
+  def test_parse_stylesheet_bare_ident_terminates
+    ss = CSS.parse_stylesheet('hidden')
+
+    assert_equal [], ss.rules
+  end
+
+  def test_parse_stylesheet_nested_bad_declaration_terminates
+    ss = CSS.parse_stylesheet('a { foo }')
+
+    assert_equal 1, ss.rules.size
+    assert_equal [], ss.rules.first.block.items
+  end
+
   # parse_component_value ------------------------------------------------
 
   def test_parse_component_value_function
