@@ -61,7 +61,7 @@ Or:
 bundle add p_css
 ```
 
-Ruby 3.4+ is required. The matcher works against any object that quacks like
+Ruby 3.3+ is required. The matcher works against any object that quacks like
 a DOM element (`Nokogiri::XML::Element` works out of the box); Nokogiri is not
 a hard dependency.
 
@@ -350,7 +350,7 @@ These are deliberate omissions; pull requests welcome:
 
 ## Compatibility
 
-Ruby 3.4+. Tested on the current MRI. No mandatory runtime dependencies.
+Ruby 3.3+. Tested on the current MRI. No mandatory runtime dependencies.
 
 ## License
 
