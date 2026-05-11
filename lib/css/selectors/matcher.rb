@@ -453,9 +453,15 @@ module CSS
 
       # Element protocol helpers ---------------------------------------
 
+      # Callers (LINK_TAGS.include?, case statements) compare against
+      # lowercase literals, so the result must be lowercase. But Nokogiri's
+      # HTML parsers already emit lowercase names — the .downcase only fires
+      # in XML / uppercase-tag cases. Skip the allocation when there's
+      # nothing to lower.
       def tag(element)
         name = element.respond_to?(:tag_name) ? element.tag_name : element.name
-        name.to_s.downcase
+        name = name.to_s
+        name.match?(/[A-Z]/) ? name.downcase : name
       end
 
       def attr(element, name)
