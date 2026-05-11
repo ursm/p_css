@@ -85,6 +85,12 @@ jobs:
           - macos-latest
           - macos-15-intel
     runs-on: ${{ matrix.os }}
+    env:
+      # `install` exercises the source-gem path on hosts without a
+      # prebuilt platform gem, which triggers a fresh cargo build.
+      # Apply the same macOS linker workaround compile/test need.
+      RUSTFLAGS: ${{ startsWith(matrix.os, 'macos') && '-C link-arg=-Wl,-flat_namespace -C link-arg=-Wl,-undefined,dynamic_lookup' || '' }}
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
       - uses: ruby/setup-ruby@v1
         with:
