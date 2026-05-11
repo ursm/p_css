@@ -79,6 +79,13 @@ pub enum Pseudo {
     Active,
     Visited,
     Target,
+    // `:has(...)` — pure Ruby always returns false. We accept any
+    // argument and match the same.
+    Has,
+    // `:lang(target)` / `:dir(target)`. None means "no usable target
+    // ident was found"; matches always false (Ruby parity).
+    Lang(Option<String>),
+    Dir(Option<String>),
 }
 
 #[derive(Debug)]
@@ -220,6 +227,10 @@ fn convert_pseudo_class(value: Value) -> Result<Simple, Error> {
         ("visited",       true) => Pseudo::Visited,
         ("target",        true) => Pseudo::Target,
 
+        ("has",  _    ) => Pseudo::Has,
+        ("lang", false) => Pseudo::Lang(extract_ident_argument(arg)?.map(|s| s.to_ascii_lowercase())),
+        ("dir",  false) => Pseudo::Dir (extract_ident_argument(arg)?.map(|s| s.to_ascii_lowercase())),
+
         ("nth-child",      false) => Pseudo::NthChild(convert_anb(arg)?),
         ("nth-last-child", false) => Pseudo::NthLastChild(convert_anb(arg)?),
         ("nth-of-type",    false) => Pseudo::NthOfType(convert_anb(arg)?),
@@ -254,6 +265,34 @@ fn convert_selector_list(arg: Value) -> Result<Vec<Complex>, Error> {
     }
 
     Ok(out)
+}
+
+// Pure-Ruby `ident_argument`: scan the function's argument tokens for
+// the first ident or string token and return its value. The argument
+// arrives as a Ruby Array; non-Token entries are skipped.
+fn extract_ident_argument(arg: Value) -> Result<Option<String>, Error> {
+    let ruby = magnus::Ruby::get().unwrap();
+
+    if !arg.is_kind_of(ruby.class_array()) {
+        return Ok(None);
+    }
+
+    let array = RArray::from_value(arg).unwrap();
+
+    for v in array {
+        if class_name(v)? != "CSS::Token" {
+            continue;
+        }
+
+        let type_sym: Value  = v.funcall("type", ())?;
+        let type_str: String = type_sym.funcall("to_s", ())?;
+
+        if type_str == "ident" || type_str == "string" {
+            return v.funcall("value", ()).map(Some);
+        }
+    }
+
+    Ok(None)
 }
 
 fn convert_anb(arg: Value) -> Result<AnB, Error> {

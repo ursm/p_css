@@ -120,7 +120,14 @@ class TestNativeMatcher < Minitest::Test
     'input:disabled',
     'input:checked',
     'fieldset input',
-    'form :read-only'
+    'form :read-only',
+    ':lang(en)',
+    ':lang(ja)',
+    ':lang(en-US)',
+    ':dir(ltr)',
+    ':dir(rtl)',
+    ':has(p)',
+    ':not(:has(p))'
   ].freeze
 
   def setup

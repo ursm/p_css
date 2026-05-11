@@ -121,7 +121,49 @@ fn match_pseudo(snap: &Snapshot, slot: u32, element: &ElementData, pseudo: &Pseu
         Pseudo::Active       => stateful(state, snap, slot, StatefulKind::Active),
         Pseudo::Visited      => stateful(state, snap, slot, StatefulKind::Visited),
         Pseudo::Target       => stateful(state, snap, slot, StatefulKind::Target),
+
+        Pseudo::Has          => false,
+        Pseudo::Lang(target) => match_lang(snap, slot, target.as_deref()),
+        Pseudo::Dir(target)  => match_dir(snap, slot, target.as_deref()),
     }
+}
+
+fn match_lang(snap: &Snapshot, slot: u32, target: Option<&str>) -> bool {
+    let Some(target) = target else { return false };
+
+    let mut cur = Some(slot);
+    while let Some(s) = cur {
+        let el = snap.element(s);
+
+        let actual = el.attrs.get("lang").or_else(|| el.attrs.get("xml:lang"));
+
+        if let Some(actual) = actual {
+            let actual = actual.to_ascii_lowercase();
+            return actual == target
+                || actual.starts_with(target) && actual.as_bytes().get(target.len()) == Some(&b'-');
+        }
+
+        cur = el.parent;
+    }
+
+    false
+}
+
+fn match_dir(snap: &Snapshot, slot: u32, target: Option<&str>) -> bool {
+    let Some(target) = target else { return false };
+
+    let mut cur = Some(slot);
+    while let Some(s) = cur {
+        let el = snap.element(s);
+
+        if let Some(actual) = el.attrs.get("dir") {
+            return actual.eq_ignore_ascii_case(target);
+        }
+
+        cur = el.parent;
+    }
+
+    target == "ltr"
 }
 
 fn stateful(state: Option<&State>, snap: &Snapshot, slot: u32, kind: StatefulKind) -> bool {
