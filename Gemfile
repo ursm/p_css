@@ -6,6 +6,8 @@ group :development, :test do
   gem 'minitest'
   gem 'nokogiri'
   gem 'rake'
+  gem 'rake-compiler'
+  gem 'rb_sys'
   gem 'rbs'
 end
 

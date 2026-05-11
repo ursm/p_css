@@ -19,6 +19,14 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 3.3'
 
-  spec.files = Dir['lib/**/*.rb', 'sig/**/*.rbs', 'README.md', 'LICENSE.txt']
+  spec.files = Dir[
+    'lib/**/*.rb',
+    'sig/**/*.rbs',
+    'ext/**/*.{rs,toml,rb}',
+    'ext/**/Cargo.lock',
+    'README.md',
+    'LICENSE.txt'
+  ]
   spec.require_paths = ['lib']
+  spec.extensions    = ['ext/css_native/extconf.rb']
 end

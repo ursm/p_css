@@ -1,0 +1,3 @@
+[workspace]
+members  = ['ext/css_native']
+resolver = '2'
