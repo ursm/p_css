@@ -19,14 +19,14 @@ Gem::Specification.new do |spec|
 
   spec.required_ruby_version = '>= 3.3'
 
+  # The Rust extension under ext/ + lib/css/native.rb is still WIP and
+  # not packaged in the 0.1.x line — that will ship in 0.2.0 along with
+  # precompiled platform gems via cibuildgem.
   spec.files = Dir[
     'lib/**/*.rb',
     'sig/**/*.rbs',
-    'ext/**/*.{rs,toml,rb}',
-    'ext/**/Cargo.lock',
     'README.md',
     'LICENSE.txt'
-  ]
+  ].reject {|f| f == 'lib/css/native.rb' }
   spec.require_paths = ['lib']
-  spec.extensions    = ['ext/css_native/extconf.rb']
 end
