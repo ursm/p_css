@@ -1,5 +1,6 @@
 use crate::matcher;
 use crate::selectors::Selector;
+use crate::state::State;
 use magnus::{
     prelude::*, value::ReprValue, Error, RArray, RHash, Ruby, TryConvert, Value,
 };
@@ -14,11 +15,12 @@ struct MatchAnyArgs<'a> {
     snap:      &'a Snapshot,
     slot:      u32,
     selectors: &'a [&'a Selector],
+    state:     Option<&'a State>,
 }
 
 unsafe extern "C" fn match_any_trampoline(data: *mut c_void) -> *mut c_void {
     let args = &*(data as *const MatchAnyArgs);
-    let result = args.selectors.iter().any(|s| matcher::matches(args.snap, args.slot, s));
+    let result = args.selectors.iter().any(|s| matcher::matches(args.snap, args.slot, s, args.state));
     result as usize as *mut c_void
 }
 
@@ -27,6 +29,7 @@ struct MatchIndicesArgs<'a> {
     slot:      u32,
     selectors: &'a [&'a Selector],
     out:       *mut Vec<u32>,
+    state:     Option<&'a State>,
 }
 
 unsafe extern "C" fn match_indices_trampoline(data: *mut c_void) -> *mut c_void {
@@ -34,11 +37,22 @@ unsafe extern "C" fn match_indices_trampoline(data: *mut c_void) -> *mut c_void 
     let out  = &mut *args.out;
 
     for (i, sel) in args.selectors.iter().enumerate() {
-        if matcher::matches(args.snap, args.slot, sel) {
+        if matcher::matches(args.snap, args.slot, sel, args.state) {
             out.push(i as u32);
         }
     }
     std::ptr::null_mut()
+}
+
+fn unwrap_state(value: Value) -> Result<Option<&'static State>, Error> {
+    if value.is_nil() {
+        return Ok(None);
+    }
+
+    // SAFETY: the State is held alive by Ruby for the duration of the
+    // surrounding matches?* call.
+    let state: &State = TryConvert::try_convert(value)?;
+    Ok(Some(unsafe { std::mem::transmute::<&State, &'static State>(state) }))
 }
 
 fn unwrap_selectors(array: RArray) -> Result<Vec<&'static Selector>, Error> {
@@ -124,20 +138,22 @@ impl Snapshot {
         &self.elements[slot as usize]
     }
 
-    pub fn matches(&self, element: Value, selector: &Selector) -> Result<bool, Error> {
-        let slot = self.resolve_slot(element)?;
+    pub fn matches(&self, element: Value, selector: &Selector, state: Value) -> Result<bool, Error> {
+        let slot       = self.resolve_slot(element)?;
+        let state_ref  = unwrap_state(state)?;
         // GVL release adds ~1μs of release/reacquire overhead, which
         // exceeds the work per single-selector match. We keep this path
         // GVL-held; callers wanting thread parallelism should use the
         // batch API below.
-        Ok(matcher::matches(self, slot, selector))
+        Ok(matcher::matches(self, slot, selector, state_ref))
     }
 
-    pub fn matches_any(&self, element: Value, selectors: RArray) -> Result<bool, Error> {
-        let slot = self.resolve_slot(element)?;
-        let sels = unwrap_selectors(selectors)?;
+    pub fn matches_any(&self, element: Value, selectors: RArray, state: Value) -> Result<bool, Error> {
+        let slot      = self.resolve_slot(element)?;
+        let sels      = unwrap_selectors(selectors)?;
+        let state_ref = unwrap_state(state)?;
 
-        let args = MatchAnyArgs { snap: self, slot, selectors: &sels };
+        let args = MatchAnyArgs { snap: self, slot, selectors: &sels, state: state_ref };
         let data = &args as *const MatchAnyArgs as *mut c_void;
 
         let raw = unsafe {
@@ -152,13 +168,14 @@ impl Snapshot {
         Ok(raw as usize != 0)
     }
 
-    pub fn match_indices(&self, element: Value, selectors: RArray) -> Result<RArray, Error> {
-        let slot = self.resolve_slot(element)?;
-        let sels = unwrap_selectors(selectors)?;
+    pub fn match_indices(&self, element: Value, selectors: RArray, state: Value) -> Result<RArray, Error> {
+        let slot      = self.resolve_slot(element)?;
+        let sels      = unwrap_selectors(selectors)?;
+        let state_ref = unwrap_state(state)?;
 
         let mut out_buf: Vec<u32> = Vec::with_capacity(sels.len());
         let buf_ptr = &mut out_buf as *mut Vec<u32>;
-        let args = MatchIndicesArgs { snap: self, slot, selectors: &sels, out: buf_ptr };
+        let args = MatchIndicesArgs { snap: self, slot, selectors: &sels, out: buf_ptr, state: state_ref };
         let data = &args as *const MatchIndicesArgs as *mut c_void;
 
         unsafe {
@@ -176,6 +193,10 @@ impl Snapshot {
             result.push(i as i64)?;
         }
         Ok(result)
+    }
+
+    pub fn compile_state(&self, hash: RHash) -> Result<State, Error> {
+        State::compile(self, hash)
     }
 
     fn resolve_slot(&self, element: Value) -> Result<u32, Error> {
@@ -340,9 +361,10 @@ pub fn init(ruby: &Ruby) -> Result<(), Error> {
 
     class.define_singleton_method("from_document", magnus::function!(Snapshot::from_document, 1))?;
     class.define_method("size",                    magnus::method!(Snapshot::size, 0))?;
-    class.define_method("matches?",                magnus::method!(Snapshot::matches, 2))?;
-    class.define_method("matches_any?",            magnus::method!(Snapshot::matches_any, 2))?;
-    class.define_method("match_indices",            magnus::method!(Snapshot::match_indices, 2))?;
+    class.define_method("matches?",                magnus::method!(Snapshot::matches,        3))?;
+    class.define_method("matches_any?",            magnus::method!(Snapshot::matches_any,    3))?;
+    class.define_method("match_indices",           magnus::method!(Snapshot::match_indices,  3))?;
+    class.define_method("compile_state",           magnus::method!(Snapshot::compile_state,  1))?;
 
     Ok(())
 }

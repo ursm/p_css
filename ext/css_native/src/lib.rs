@@ -1,6 +1,7 @@
 mod matcher;
 mod selectors;
 mod snapshot;
+mod state;
 mod tokenizer;
 
 use magnus::{
@@ -109,6 +110,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     native.define_singleton_method("tokenize", function!(tokenize, 2))?;
 
     selectors::init(ruby)?;
+    state::init(ruby)?;
     snapshot::init(ruby)?;
 
     Ok(())

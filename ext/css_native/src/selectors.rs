@@ -71,6 +71,14 @@ pub enum Pseudo {
     ReadOnly,
     ReadWrite,
     PlaceholderShown,
+    // Stateful — resolved by the caller-supplied State at match time
+    Hover,
+    Focus,
+    FocusWithin,
+    FocusVisible,
+    Active,
+    Visited,
+    Target,
 }
 
 #[derive(Debug)]
@@ -203,6 +211,14 @@ fn convert_pseudo_class(value: Value) -> Result<Simple, Error> {
         ("read-only",         true) => Pseudo::ReadOnly,
         ("read-write",        true) => Pseudo::ReadWrite,
         ("placeholder-shown", true) => Pseudo::PlaceholderShown,
+
+        ("hover",         true) => Pseudo::Hover,
+        ("focus",         true) => Pseudo::Focus,
+        ("focus-within",  true) => Pseudo::FocusWithin,
+        ("focus-visible", true) => Pseudo::FocusVisible,
+        ("active",        true) => Pseudo::Active,
+        ("visited",       true) => Pseudo::Visited,
+        ("target",        true) => Pseudo::Target,
 
         ("nth-child",      false) => Pseudo::NthChild(convert_anb(arg)?),
         ("nth-last-child", false) => Pseudo::NthLastChild(convert_anb(arg)?),

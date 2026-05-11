@@ -1,21 +1,22 @@
 use crate::selectors::{AnB, AttrMatcher, CaseFlag, Combinator, Complex, Compound, Pseudo, Selector, Simple};
 use crate::snapshot::{ElementData, Snapshot};
+use crate::state::{State, StatefulKind};
 
 // Entry point. Returns true if any of the SelectorList alternatives match.
 // Runs entirely against owned data — safe to call without the GVL.
-pub fn matches(snap: &Snapshot, slot: u32, selector: &Selector) -> bool {
-    selector.list().iter().any(|c| match_complex(snap, slot, c))
+pub fn matches(snap: &Snapshot, slot: u32, selector: &Selector, state: Option<&State>) -> bool {
+    selector.list().iter().any(|c| match_complex(snap, slot, c, state))
 }
 
-fn match_complex(snap: &Snapshot, slot: u32, complex: &Complex) -> bool {
+fn match_complex(snap: &Snapshot, slot: u32, complex: &Complex, state: Option<&State>) -> bool {
     let last = complex.compounds.len().saturating_sub(1);
-    match_at(snap, Some(slot), complex, last)
+    match_at(snap, Some(slot), complex, last, state)
 }
 
-fn match_at(snap: &Snapshot, slot: Option<u32>, complex: &Complex, index: usize) -> bool {
+fn match_at(snap: &Snapshot, slot: Option<u32>, complex: &Complex, index: usize, state: Option<&State>) -> bool {
     let Some(slot) = slot else { return false };
 
-    if !match_compound(snap, slot, &complex.compounds[index]) {
+    if !match_compound(snap, slot, &complex.compounds[index], state) {
         return false;
     }
 
@@ -27,10 +28,10 @@ fn match_at(snap: &Snapshot, slot: Option<u32>, complex: &Complex, index: usize)
     let element = snap.element(slot);
 
     match complex.combinators[prev] {
-        Combinator::Descendant         => walk_until_match(snap, element.parent,       complex, prev, Step::Parent),
-        Combinator::Child              => match_at(snap, element.parent,               complex, prev),
-        Combinator::NextSibling        => match_at(snap, element.prev_sibling,         complex, prev),
-        Combinator::SubsequentSibling  => walk_until_match(snap, element.prev_sibling, complex, prev, Step::PrevSibling),
+        Combinator::Descendant         => walk_until_match(snap, element.parent,       complex, prev, Step::Parent,      state),
+        Combinator::Child              => match_at(snap, element.parent,               complex, prev,                    state),
+        Combinator::NextSibling        => match_at(snap, element.prev_sibling,         complex, prev,                    state),
+        Combinator::SubsequentSibling  => walk_until_match(snap, element.prev_sibling, complex, prev, Step::PrevSibling, state),
     }
 }
 
@@ -46,11 +47,12 @@ fn walk_until_match(
     complex: &Complex,
     index:   usize,
     step:    Step,
+    state:   Option<&State>,
 ) -> bool {
     let mut current = start;
 
     while let Some(slot) = current {
-        if match_at(snap, Some(slot), complex, index) {
+        if match_at(snap, Some(slot), complex, index, state) {
             return true;
         }
 
@@ -64,23 +66,23 @@ fn walk_until_match(
     false
 }
 
-fn match_compound(snap: &Snapshot, slot: u32, compound: &Compound) -> bool {
+fn match_compound(snap: &Snapshot, slot: u32, compound: &Compound, state: Option<&State>) -> bool {
     let element = snap.element(slot);
-    compound.components.iter().all(|s| match_simple(snap, slot, element, s))
+    compound.components.iter().all(|s| match_simple(snap, slot, element, s, state))
 }
 
-fn match_simple(snap: &Snapshot, slot: u32, element: &ElementData, simple: &Simple) -> bool {
+fn match_simple(snap: &Snapshot, slot: u32, element: &ElementData, simple: &Simple, state: Option<&State>) -> bool {
     match simple {
         Simple::Type(name)      => &element.tag == name,
         Simple::Universal       => true,
         Simple::Id(name)        => element.id.as_deref() == Some(name.as_str()),
         Simple::Class(name)     => element.classes.iter().any(|c| c == name),
         Simple::Attribute(attr) => match_attribute(element, attr),
-        Simple::PseudoClass(p)  => match_pseudo(snap, slot, element, p),
+        Simple::PseudoClass(p)  => match_pseudo(snap, slot, element, p, state),
     }
 }
 
-fn match_pseudo(snap: &Snapshot, slot: u32, element: &ElementData, pseudo: &Pseudo) -> bool {
+fn match_pseudo(snap: &Snapshot, slot: u32, element: &ElementData, pseudo: &Pseudo, state: Option<&State>) -> bool {
     match pseudo {
         Pseudo::Root        => element.parent.is_none(),
         Pseudo::FirstChild  => element.prev_sibling.is_none(),
@@ -99,8 +101,8 @@ fn match_pseudo(snap: &Snapshot, slot: u32, element: &ElementData, pseudo: &Pseu
         Pseudo::NthOfType(anb)      => element.parent.is_some() && match_anb(anb, element.index_of_type),
         Pseudo::NthLastOfType(anb)  => element.parent.is_some() && match_anb(anb, element.last_index_of_type),
 
-        Pseudo::Is(list)  =>  list.iter().any(|c| match_complex(snap, slot, c)),
-        Pseudo::Not(list) => !list.iter().any(|c| match_complex(snap, slot, c)),
+        Pseudo::Is(list)  =>  list.iter().any(|c| match_complex(snap, slot, c, state)),
+        Pseudo::Not(list) => !list.iter().any(|c| match_complex(snap, slot, c, state)),
 
         Pseudo::Link             => is_link(element),
         Pseudo::Enabled          => is_disableable(element) && !is_disabled(snap, slot),
@@ -111,7 +113,19 @@ fn match_pseudo(snap: &Snapshot, slot: u32, element: &ElementData, pseudo: &Pseu
         Pseudo::ReadOnly         => is_read_only(snap, slot, element),
         Pseudo::ReadWrite        => is_read_write(snap, slot, element),
         Pseudo::PlaceholderShown => is_placeholder_shown(element),
+
+        Pseudo::Hover        => stateful(state, snap, slot, StatefulKind::Hover),
+        Pseudo::Focus        => stateful(state, snap, slot, StatefulKind::Focus),
+        Pseudo::FocusWithin  => stateful(state, snap, slot, StatefulKind::FocusWithin),
+        Pseudo::FocusVisible => stateful(state, snap, slot, StatefulKind::FocusVisible),
+        Pseudo::Active       => stateful(state, snap, slot, StatefulKind::Active),
+        Pseudo::Visited      => stateful(state, snap, slot, StatefulKind::Visited),
+        Pseudo::Target       => stateful(state, snap, slot, StatefulKind::Target),
     }
+}
+
+fn stateful(state: Option<&State>, snap: &Snapshot, slot: u32, kind: StatefulKind) -> bool {
+    state.is_some_and(|s| s.matches(snap, slot, kind))
 }
 
 const LINK_TAGS:        &[&str] = &["a", "area", "link"];

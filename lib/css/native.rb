@@ -1,6 +1,31 @@
 require_relative '../css'
 require_relative 'css_native'
 
+# Rust defines matches?, matches_any?, match_indices with a required
+# `state` argument (3 args). Wrap them in Ruby so callers can pass 2
+# args when stateful pseudos aren't relevant.
+module CSS
+  module Native
+    class Snapshot
+      alias_method :_native_matches?,      :matches?
+      alias_method :_native_matches_any?,  :matches_any?
+      alias_method :_native_match_indices, :match_indices
+
+      def matches?(element, selector, state = nil)
+        _native_matches?(element, selector, state)
+      end
+
+      def matches_any?(element, selectors, state = nil)
+        _native_matches_any?(element, selectors, state)
+      end
+
+      def match_indices(element, selectors, state = nil)
+        _native_match_indices(element, selectors, state)
+      end
+    end
+  end
+end
+
 module CSS
   module Native
     # High-level wrapper: takes a Nokogiri element + a selector (string or
@@ -12,14 +37,15 @@ module CSS
     # many matches against the same DOM. With neither, a per-document
     # snapshot is cached by document identity.
     class << self
-      def matches?(element, selector, snapshot: nil, document: nil)
+      def matches?(element, selector, snapshot: nil, document: nil, state: nil)
         ast      = selector.is_a?(String) ? CSS.parse_selector_list(selector) : selector
         compiled = compile_or_nil(ast)
+        snap     = snapshot || snapshot_for(document || element.document)
 
-        return CSS.matches?(element, ast) unless compiled
+        return CSS.matches?(element, ast, state: state) unless compiled
 
-        snap = snapshot || snapshot_for(document || element.document)
-        snap.matches?(element, compiled)
+        native_state = state.nil? ? nil : (state.is_a?(State) ? state : snap.compile_state(state))
+        snap.matches?(element, compiled, native_state)
       end
 
       def compile_or_nil(ast)
@@ -61,12 +87,13 @@ module CSS
       # hop per resolve (GVL released), then merge in any Ruby-fallback
       # matches. Cuts per-resolve FFI cost from O(candidates) to O(1).
       def resolve(element, inline_style: nil, state: nil)
-        cache       = {}
-        candidates  = collect_candidate_indexes(element, cache)
-        order       = 0
-        matches     = []
+        cache        = {}
+        candidates   = collect_candidate_indexes(element, cache)
+        order        = 0
+        matches      = []
+        native_state = state && @snapshot.compile_state(state)
 
-        best_by_entry = native_pass(element, candidates)
+        best_by_entry = native_pass(element, candidates, native_state)
         ruby_fallback_pass(element, candidates, best_by_entry, cache, state)
 
         candidates.each do |entry_idx|
@@ -97,7 +124,7 @@ module CSS
 
       # Flatten the candidates' compiled selectors into one batched
       # match_indices call. Returns Hash{entry_idx => best_specificity}.
-      def native_pass(element, candidates)
+      def native_pass(element, candidates, native_state)
         positions = []
         sels      = []
 
@@ -114,7 +141,7 @@ module CSS
 
         return best_by_entry if sels.empty?
 
-        @snapshot.match_indices(element, sels).each {|i|
+        @snapshot.match_indices(element, sels, native_state).each {|i|
           entry_idx, spec = positions[i]
           cur             = best_by_entry[entry_idx]
 
