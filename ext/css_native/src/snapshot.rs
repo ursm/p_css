@@ -22,6 +22,25 @@ unsafe extern "C" fn match_any_trampoline(data: *mut c_void) -> *mut c_void {
     result as usize as *mut c_void
 }
 
+struct MatchIndicesArgs<'a> {
+    snap:      &'a Snapshot,
+    slot:      u32,
+    selectors: &'a [&'a Selector],
+    out:       *mut Vec<u32>,
+}
+
+unsafe extern "C" fn match_indices_trampoline(data: *mut c_void) -> *mut c_void {
+    let args = &*(data as *const MatchIndicesArgs);
+    let out  = &mut *args.out;
+
+    for (i, sel) in args.selectors.iter().enumerate() {
+        if matcher::matches(args.snap, args.slot, sel) {
+            out.push(i as u32);
+        }
+    }
+    std::ptr::null_mut()
+}
+
 fn unwrap_selectors(array: RArray) -> Result<Vec<&'static Selector>, Error> {
     // SAFETY: We hold the GVL during this conversion. The &Selector
     // references borrow from the Ruby-wrapped Selector objects, which
@@ -118,6 +137,32 @@ impl Snapshot {
         };
 
         Ok(raw as usize != 0)
+    }
+
+    pub fn match_indices(&self, element: Value, selectors: RArray) -> Result<RArray, Error> {
+        let slot = self.resolve_slot(element)?;
+        let sels = unwrap_selectors(selectors)?;
+
+        let mut out_buf: Vec<u32> = Vec::with_capacity(sels.len());
+        let buf_ptr = &mut out_buf as *mut Vec<u32>;
+        let args = MatchIndicesArgs { snap: self, slot, selectors: &sels, out: buf_ptr };
+        let data = &args as *const MatchIndicesArgs as *mut c_void;
+
+        unsafe {
+            rb_sys::rb_thread_call_without_gvl(
+                Some(match_indices_trampoline),
+                data,
+                None,
+                std::ptr::null_mut(),
+            );
+        }
+
+        let ruby   = Ruby::get().unwrap();
+        let result = ruby.ary_new_capa(out_buf.len());
+        for i in out_buf {
+            result.push(i as i64)?;
+        }
+        Ok(result)
     }
 
     fn resolve_slot(&self, element: Value) -> Result<u32, Error> {
@@ -219,6 +264,7 @@ pub fn init(ruby: &Ruby) -> Result<(), Error> {
     class.define_method("size",                    magnus::method!(Snapshot::size, 0))?;
     class.define_method("matches?",                magnus::method!(Snapshot::matches, 2))?;
     class.define_method("matches_any?",            magnus::method!(Snapshot::matches_any, 2))?;
+    class.define_method("match_indices",            magnus::method!(Snapshot::match_indices, 2))?;
 
     Ok(())
 }
