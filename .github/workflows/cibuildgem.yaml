@@ -28,6 +28,12 @@ jobs:
           - macos-latest
           - macos-15-intel
     runs-on: ${{ matrix.os }}
+    env:
+      # macOS 15+ ld silently ignores `-undefined,dynamic_lookup` for
+      # Ruby symbols, breaking the link. `-flat_namespace` together with
+      # `dynamic_lookup` restores the old behavior we depend on.
+      RUSTFLAGS: ${{ startsWith(matrix.os, 'macos') && '-C link-arg=-Wl,-flat_namespace -C link-arg=-Wl,-undefined,dynamic_lookup' || '' }}
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
@@ -53,6 +59,9 @@ jobs:
         ruby: ['3.3', '3.4', '4.0']
         type: [cross, native]
     runs-on: ${{ matrix.os }}
+    env:
+      RUSTFLAGS: ${{ startsWith(matrix.os, 'macos') && '-C link-arg=-Wl,-flat_namespace -C link-arg=-Wl,-undefined,dynamic_lookup' || '' }}
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
