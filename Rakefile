@@ -42,5 +42,9 @@ Rake::TestTask.new(:test) do |t|
   t.warning = false
 end
 
-task test: :compile
+# cibuildgem builds the binary on one runner and runs the test suite
+# on another with the .so copied in — re-running `compile` there would
+# re-build inside the wrong toolchain and overwrite the binary under
+# test. Skip the prerequisite when CIBUILDGEM is set.
+task test: :compile unless ENV['CIBUILDGEM']
 task default: :test

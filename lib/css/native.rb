@@ -1,5 +1,15 @@
 require_relative '../css'
-require_relative 'css_native'
+
+# cibuildgem ships precompiled binaries at lib/css/<ruby_minor>/css_native.{so,bundle,dll}.
+# When users compile the gem from source (no platform gem available),
+# extconf.rb places the binary at lib/css/css_native.{so,bundle,dll}.
+# Try the version-specific path first, fall back to the non-versioned one.
+begin
+  ruby_minor = RUBY_VERSION[/\d+\.\d+/]
+  require "css/#{ruby_minor}/css_native"
+rescue LoadError
+  require_relative 'css_native'
+end
 
 # Rust defines matches?, matches_any?, match_indices with a required
 # `state` argument (3 args). Wrap them in Ruby so callers can pass 2
