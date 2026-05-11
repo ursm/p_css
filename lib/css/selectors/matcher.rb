@@ -43,7 +43,7 @@ module CSS
       # the duration of a single matcher invocation.
       Context = Data.define(:tag, :id, :classes)
 
-      EMPTY_CLASS_SET = Set.new.freeze
+      EMPTY_CLASSES = [].freeze
 
       def matches?(element, selector, cache: nil, state: nil)
         sel = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
@@ -148,11 +148,15 @@ module CSS
         )
       end
 
+      # Returns an Array of class names. We deliberately don't wrap in a Set:
+      # construction allocates two objects (Array + Set), and on the typical
+      # 1–5 classes per element, Array#include? is fast enough that the
+      # construction win dominates the lookup penalty.
       def build_class_set(element)
         v = attr(element, 'class')
-        return EMPTY_CLASS_SET if v.nil? || v.empty?
+        return EMPTY_CLASSES if v.nil? || v.empty?
 
-        v.to_s.split(/\s+/).to_set
+        v.to_s.split(' ')
       end
 
       # Attribute matching ----------------------------------------------

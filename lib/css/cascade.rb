@@ -35,8 +35,15 @@ module CSS
     # `state:` opts into stateful-pseudo matching — see
     # `Selectors::Matcher#matches?` for the shape. Defaults to the
     # stateless behavior (`:hover`, `:focus`, etc. never match).
-    def resolve(element, inline_style: nil, state: nil)
-      cache       = {}
+    #
+    # `cache:` lets callers share a per-element context cache across many
+    # resolves. The default `{}` is local to one call. Pass a persistent
+    # Hash when the DOM is stable across many resolves — Context (tag, id,
+    # classes) computation runs once per element instead of per resolve.
+    # The caller is responsible for clearing/replacing the cache on DOM
+    # mutation.
+    def resolve(element, inline_style: nil, state: nil, cache: nil)
+      cache     ||= {}
       candidates  = collect_candidate_indexes(element, cache)
       order       = 0
       matches     = []
