@@ -27,9 +27,17 @@ class TestNativeMatcher < Minitest::Test
           </article>
           <form>
             <input type="text"     name="q"     placeholder="search">
-            <input type="checkbox" name="t1"    required>
+            <input type="checkbox" name="t1"    required checked>
             <input type="checkbox" name="t2">
+            <input type="hidden"   name="csrf"  value="x">
+            <textarea name="bio" readonly>old</textarea>
+            <select name="kind"><option value="a" selected>A</option><option value="b">B</option></select>
+            <fieldset disabled>
+              <legend><input type="text" name="legend-input"></legend>
+              <input type="text" name="inside-disabled">
+            </fieldset>
             <button type="submit" disabled>Send</button>
+            <div contenteditable="true">editable</div>
           </form>
         </main>
       </body>
@@ -63,7 +71,56 @@ class TestNativeMatcher < Minitest::Test
     'h1 ~ a',
     '.main .title',
     'body header .link',
-    'article [data-state]'
+    'article [data-state]',
+    ':root',
+    ':scope',
+    ':first-child',
+    ':last-child',
+    ':only-child',
+    ':empty',
+    ':defined',
+    'ul :first-child',
+    'ul :last-child',
+    'article *:empty',
+    ':first-of-type',
+    ':last-of-type',
+    ':only-of-type',
+    'ul li:first-of-type',
+    'article p:last-of-type',
+    ':nth-child(1)',
+    ':nth-child(2)',
+    ':nth-child(even)',
+    ':nth-child(odd)',
+    ':nth-child(2n+1)',
+    ':nth-child(3n)',
+    ':nth-last-child(1)',
+    ':nth-last-child(2)',
+    ':nth-of-type(1)',
+    ':nth-of-type(odd)',
+    ':nth-last-of-type(1)',
+    'li:nth-child(2n)',
+    ':not(.title)',
+    ':not(p)',
+    ':is(p, h1)',
+    ':is(.title, .link)',
+    ':where(p)',
+    ':matches(li)',
+    'article :not(.title)',
+    ':is(p, h2):first-child',
+    ':link',
+    ':any-link',
+    ':enabled',
+    ':disabled',
+    ':checked',
+    ':required',
+    ':optional',
+    ':read-only',
+    ':read-write',
+    ':placeholder-shown',
+    'input:disabled',
+    'input:checked',
+    'fieldset input',
+    'form :read-only'
   ].freeze
 
   def setup

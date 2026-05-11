@@ -66,6 +66,16 @@ pub struct ElementData {
     pub parent:       Option<u32>,
     pub prev_sibling: Option<u32>,
     pub next_sibling: Option<u32>,
+    pub first_child:  Option<u32>, // first element child, for ancestor traversal in :disabled
+    // `:empty` per CSS3 — no element children and no non-whitespace text.
+    // Comments/processing-instructions/doctypes don't disqualify.
+    pub is_empty:     bool,
+    // 1-based positions among parent's element children, used by nth-*
+    // and (first|last|only)-of-type. Root elements get 1/1.
+    pub index:               u32, // among all siblings
+    pub last_index:          u32, // among all siblings, counted from the end
+    pub index_of_type:       u32, // among same-tag siblings
+    pub last_index_of_type:  u32, // among same-tag siblings, counted from the end
 }
 
 #[magnus::wrap(class = "CSS::Native::Snapshot", free_immediately, size)]
@@ -95,6 +105,9 @@ impl Snapshot {
         for n in &node_values {
             elements.push(build_element(*n, &id_to_slot)?);
         }
+
+        // Third pass: compute sibling indices for :nth-* / *-of-type.
+        compute_sibling_indices(&mut elements);
 
         Ok(Snapshot { elements, id_to_slot })
     }
@@ -178,15 +191,80 @@ impl Snapshot {
 }
 
 fn build_element(node: Value, id_to_slot: &HashMap<i64, u32>) -> Result<ElementData, Error> {
-    let tag         = read_tag(node)?;
-    let id          = read_str_attr(node, "id")?;
-    let classes     = read_classes(node)?;
-    let attrs       = collect_attrs(node)?;
-    let parent      = resolve_ref(node, "parent", id_to_slot, true)?;
+    let tag          = read_tag(node)?;
+    let id           = read_str_attr(node, "id")?;
+    let classes      = read_classes(node)?;
+    let attrs        = collect_attrs(node)?;
+    let parent       = resolve_ref(node, "parent", id_to_slot, true)?;
     let prev_sibling = resolve_ref(node, "previous_element", id_to_slot, false)?;
     let next_sibling = resolve_ref(node, "next_element",     id_to_slot, false)?;
+    let is_empty     = compute_is_empty(node)?;
 
-    Ok(ElementData { tag, id, classes, attrs, parent, prev_sibling, next_sibling })
+    Ok(ElementData {
+        tag, id, classes, attrs,
+        parent, prev_sibling, next_sibling,
+        first_child: None,
+        is_empty,
+        index: 1, last_index: 1, index_of_type: 1, last_index_of_type: 1,
+    })
+}
+
+// Group elements by parent, then assign 1-based indices in document order
+// (overall and per-tag), plus their counted-from-end counterparts.
+fn compute_sibling_indices(elements: &mut [ElementData]) {
+    let mut groups: HashMap<Option<u32>, Vec<u32>> = HashMap::new();
+    for (i, el) in elements.iter().enumerate() {
+        groups.entry(el.parent).or_default().push(i as u32);
+    }
+
+    for (parent, siblings) in &groups {
+        let total = siblings.len() as u32;
+
+        // Populate first_child on the parent element (if any).
+        if let (Some(parent_slot), Some(&first)) = (parent, siblings.first()) {
+            elements[*parent_slot as usize].first_child = Some(first);
+        }
+
+        // Per-tag totals first, then per-tag running positions.
+        let mut totals_by_tag: HashMap<String, u32> = HashMap::new();
+        for &slot in siblings {
+            *totals_by_tag.entry(elements[slot as usize].tag.clone()).or_insert(0) += 1;
+        }
+
+        let mut positions_by_tag: HashMap<String, u32> = HashMap::new();
+        for (i, &slot) in siblings.iter().enumerate() {
+            let tag           = elements[slot as usize].tag.clone();
+            let pos_in_type   = positions_by_tag.entry(tag.clone()).or_insert(0);
+            *pos_in_type     += 1;
+            let pos_in_type   = *pos_in_type;
+            let total_in_type = totals_by_tag[&tag];
+
+            let el = &mut elements[slot as usize];
+            el.index              = (i as u32) + 1;
+            el.last_index         = total - i as u32;
+            el.index_of_type      = pos_in_type;
+            el.last_index_of_type = total_in_type - pos_in_type + 1;
+        }
+    }
+}
+
+fn compute_is_empty(node: Value) -> Result<bool, Error> {
+    let children: RArray = node.funcall::<_, _, Value>("children", ())?.funcall("to_a", ())?;
+
+    for child in children {
+        if child.funcall::<_, _, bool>("element?", ()).unwrap_or(false) {
+            return Ok(false);
+        }
+
+        if child.funcall::<_, _, bool>("text?", ()).unwrap_or(false) {
+            let content: String = child.funcall("content", ())?;
+            if content.chars().any(|c| !c.is_whitespace()) {
+                return Ok(false);
+            }
+        }
+    }
+
+    Ok(true)
 }
 
 fn read_tag(node: Value) -> Result<String, Error> {
