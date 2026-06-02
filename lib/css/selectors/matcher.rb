@@ -99,7 +99,17 @@ module CSS
       end
 
       def match_compound(element, compound, cache, state)
-        compound.components.all? { match_simple(element, _1, cache, state) }
+        components = compound.components
+        i          = 0
+        n          = components.size
+
+        while i < n
+          return false unless match_simple(element, components[i], cache, state)
+
+          i += 1
+        end
+
+        true
       end
 
       def match_simple(element, simple, cache, state)
@@ -285,7 +295,12 @@ module CSS
         return nil if p.nil?
 
         siblings = element_children(p)
-        siblings = siblings.select { tag(_1).casecmp?(tag(element)) } if of_type
+
+        if of_type
+          own_tag  = tag(element)
+          siblings = siblings.select { tag(_1) == own_tag }
+        end
+
         siblings = siblings.reverse if from_end
 
         idx = siblings.index { same_node?(_1, element) }
