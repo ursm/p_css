@@ -18,7 +18,10 @@ module CSS
   # not modeled — `@layer`, `@supports`, `@container`, `@scope`, and
   # `@starting-style` blocks are descended into unconditionally.
   class Cascade
-    Match = Data.define(:declaration, :specificity, :inline, :order)
+    # Allocated once per matching declaration on every resolve; Struct
+    # constructs noticeably faster than Data, and Match never escapes
+    # `resolve`, so it doesn't need Data's immutability guarantees.
+    Match = Struct.new(:declaration, :specificity, :inline, :order)
 
     RuleEntry = Data.define(:selector_pairs, :declarations)
 
@@ -56,14 +59,14 @@ module CSS
 
         entry.declarations.each do |decl|
           order += 1
-          matches << Match.new(declaration: decl, specificity: spec, inline: false, order: order)
+          matches << Match.new(decl, spec, false, order)
         end
       end
 
       if inline_style
         inline_declarations(inline_style).each do |decl|
           order += 1
-          matches << Match.new(declaration: decl, specificity: Selectors::Specificity::ZERO, inline: true, order: order)
+          matches << Match.new(decl, Selectors::Specificity::ZERO, true, order)
         end
       end
 
@@ -216,6 +219,14 @@ module CSS
     end
 
     def best_matching_specificity(element, selector_pairs, cache, state)
+      # The single-selector case is the dominant shape in real stylesheets
+      # (`.foo { ... }`, `div > a { ... }`), so skip the each/block frame
+      # and the running-max compare for it.
+      if selector_pairs.size == 1
+        sel, spec = selector_pairs[0]
+        return Selectors::Matcher.matches?(element, sel, cache: cache, state: state) ? spec : nil
+      end
+
       best = nil
 
       selector_pairs.each do |sel, spec|
