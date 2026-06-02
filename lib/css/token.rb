@@ -15,12 +15,12 @@ module CSS
       colon semicolon comma
       lbracket rbracket lparen rparen lbrace rbrace
       eof
-    ].freeze
+    ].to_h { [_1, true] }.freeze
 
     attr_reader :type, :value, :flag, :unit
 
     def initialize(type, value = nil, flag: nil, unit: nil, position: nil)
-      raise ArgumentError, "unknown token type: #{type.inspect}" unless TYPES.include?(type)
+      raise ArgumentError, "unknown token type: #{type.inspect}" unless TYPES[type]
 
       @type     = type
       @value    = value
