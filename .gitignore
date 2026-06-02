@@ -1,11 +1,7 @@
 /.bundle/
 /pkg/
-/target/
 /tmp/
 /vendor/bundle/
 Gemfile.lock
 *.gem
-*.so
-*.dylib
-*.dll
 .DS_Store

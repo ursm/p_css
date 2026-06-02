@@ -26,8 +26,7 @@ and none of them currently:
   influences a visibility judgement.
 
 p CSS fills that gap. The gem is intentionally general — no DOM library
-is hardwired into the matcher. An optional Rust acceleration path
-(`CSS::Native`, see below) is Nokogiri-specific.
+is hardwired in.
 
 ## What's in the box
 
@@ -333,51 +332,6 @@ r.cover?(0x10AB)  # => true
 r.to_s       # => "U+1000-10FF"
 ```
 
-## Native acceleration (optional)
-
-`require 'css/native'` opts in to a Rust extension that accelerates
-matching and cascade resolution against Nokogiri documents. It builds a
-flat snapshot of the document once, then matches selectors against that
-snapshot from Rust — which lets the batched APIs **release the GVL**, so
-multiple threads can resolve cascades against the same document in
-parallel.
-
-```ruby
-require 'css/native'
-
-doc        = Nokogiri::HTML(html)
-stylesheet = CSS.parse_stylesheet(css)
-
-cascade = CSS::Native::Cascade.new(stylesheet, doc)
-winners = cascade.resolve(doc.at_css('p'))
-# GVL is released for the inner batched FFI hop, so other Ruby threads
-# can run their own cascade.resolve(...) at the same time.
-```
-
-For one-off matches without a stylesheet:
-
-```ruby
-CSS::Native.matches?(element, '.card > a:hover, [data-x]:nth-child(2n+1)')
-```
-
-Trade-offs vs the pure-Ruby path:
-
-- **Nokogiri-only.** The snapshot reads the document up front; non-Nokogiri
-  DOM-likes aren't supported on this path.
-- **Snapshot is immutable.** Mutate the DOM and you must construct a fresh
-  `CSS::Native::Cascade` (or `Snapshot.from_document`).
-- **Transparent fallback.** Selectors with features the native matcher
-  doesn't yet handle (some pseudo-classes, `:has()`, etc.) fall through
-  to the pure-Ruby matcher — observable behavior matches `CSS::Cascade`.
-- **Single-element calls don't release the GVL.** FFI overhead exceeds
-  the work for one match; `CSS::Native::Cascade#resolve`,
-  `Snapshot#matches_any?`, and `Snapshot#match_indices` batch internally
-  and *do* release.
-
-Precompiled binaries ship for Linux (x86_64, aarch64) and macOS (x86_64,
-arm64). Other platforms compile from source on install via `rb_sys` and
-a Rust toolchain.
-
 ## Out of scope
 
 These are deliberate omissions; pull requests welcome:
@@ -393,10 +347,7 @@ These are deliberate omissions; pull requests welcome:
 
 ## Compatibility
 
-Ruby 3.3+. Tested on the current MRI. The pure-Ruby surface has no
-mandatory runtime dependencies. `CSS::Native` pulls in `rb_sys` (used
-by `extconf.rb` when compiling from source) and expects a Nokogiri
-document at call time.
+Ruby 3.3+. Tested on the current MRI. No mandatory runtime dependencies.
 
 ## License
 

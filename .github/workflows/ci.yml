@@ -19,12 +19,5 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # rust-cache keys on Cargo.lock and the matrix value so each
-          # Ruby version gets its own build artifacts (rb-sys generates
-          # version-specific bindings).
-          key: ruby-${{ matrix.ruby }}
       - run: bundle exec rake test
       - run: bundle exec rbs -I sig validate

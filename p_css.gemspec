@@ -22,17 +22,8 @@ Gem::Specification.new do |spec|
   spec.files = Dir[
     'lib/**/*.rb',
     'sig/**/*.rbs',
-    'ext/**/*.{rs,rb}',
-    '**/Cargo.{toml,lock}',
     'README.md',
     'LICENSE.txt'
   ]
   spec.require_paths = ['lib']
-  spec.extensions    = ['ext/css_native/extconf.rb']
-
-  # `rb_sys` is needed at install time so extconf.rb can require
-  # rb_sys/mkmf when end users compile from a source gem. cibuildgem-built
-  # platform gems ship a prebuilt .so per Ruby version and bypass this
-  # path, but the source gem still has to be installable.
-  spec.add_dependency 'rb_sys', '~> 0.9'
 end
