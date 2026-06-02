@@ -105,7 +105,7 @@ module CSS
       groups  = []
       current = []
 
-      loop do
+      while true
         case peek.type
         when :eof
           groups << current
@@ -151,7 +151,7 @@ module CSS
     def consume_rule_list(top_level:)
       rules = []
 
-      loop do
+      while true
         t = peek
 
         case t.type
@@ -183,7 +183,7 @@ module CSS
       prelude = []
       block   = nil
 
-      loop do
+      while true
         t = peek
 
         case t.type
@@ -214,7 +214,7 @@ module CSS
     def consume_qualified_rule(nested:)
       prelude = []
 
-      loop do
+      while true
         t = peek
 
         case t.type
@@ -254,7 +254,7 @@ module CSS
     def collect_block_items(stop_at_close_brace:)
       items = []
 
-      loop do
+      while true
         t = peek
 
         case t.type
@@ -306,7 +306,7 @@ module CSS
 
       value = []
 
-      loop do
+      while true
         t = peek
 
         case t.type
@@ -350,7 +350,7 @@ module CSS
       end_type  = BRACKET_CLOSE_TYPE.fetch(open_type)
       values    = []
 
-      loop do
+      while true
         t = peek
 
         case t.type
@@ -371,7 +371,7 @@ module CSS
       name   = consume.value
       values = []
 
-      loop do
+      while true
         t = peek
 
         case t.type

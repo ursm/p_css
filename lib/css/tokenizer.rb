@@ -34,7 +34,7 @@ module CSS
     def tokenize
       tokens = []
 
-      loop do
+      while true
         token = next_token
         break if token.type == :eof
 
@@ -45,7 +45,7 @@ module CSS
     end
 
     def next_token
-      consume_comments unless @preserve_comments
+      consume_comments if !@preserve_comments && @chars[@pos] == '/'
 
       return Token.new(:eof) if @pos >= @length
 
@@ -62,7 +62,7 @@ module CSS
 
       c = consume
 
-      return consume_whitespace      if whitespace?(c)
+      return consume_whitespace      if c == ' ' || c == "\n" || c == "\t"
       return consume_string_token(c) if c == '"' || c == "'"
 
       if (c == '+' || c == '-' || c == '.') && number_starts?(c, peek, peek(1))
@@ -252,7 +252,9 @@ module CSS
     end
 
     def consume_whitespace
-      consume while whitespace?(peek)
+      while (c = @chars[@pos]) && (c == ' ' || c == "\n" || c == "\t")
+        @pos += 1
+      end
 
       Token.new(:whitespace)
     end
@@ -261,7 +263,7 @@ module CSS
     def consume_string_token(ending)
       buf = +''
 
-      loop do
+      while true
         c = consume
 
         case c
@@ -306,22 +308,41 @@ module CSS
       end
     end
 
-    # §4.3.11.
+    # §4.3.11. Fast path: walk @chars while the run is pure ident code points,
+    # then slice and return. Escapes (rare in real CSS) switch to a buf-based
+    # slow path that mirrors the spec's append-each-char semantics.
     def consume_ident_sequence
-      buf = +''
+      start = @pos
+      c     = nil
 
-      loop do
-        c = consume
+      while (c = @chars[@pos])
+        o = c.ord
+        break unless o >= 128 || IDENT_CP_TABLE[o]
 
-        if ident_code_point?(c)
+        @pos += 1
+      end
+
+      return @chars[start, @pos - start].join unless c == '\\' && (n = @chars[@pos + 1]) && n != "\n"
+
+      buf = @chars[start, @pos - start].join.dup
+      @pos += 1
+      buf << consume_escaped_code_point
+
+      while (c = @chars[@pos])
+        o = c.ord
+
+        if o >= 128 || IDENT_CP_TABLE[o]
           buf << c
-        elsif valid_escape?(c, peek)
+          @pos += 1
+        elsif c == '\\' && (n = @chars[@pos + 1]) && n != "\n"
+          @pos += 1
           buf << consume_escaped_code_point
         else
-          reconsume unless c.nil?
-          return buf
+          break
         end
       end
+
+      buf
     end
 
     # §4.3.4.
@@ -355,7 +376,7 @@ module CSS
 
       consume while whitespace?(peek)
 
-      loop do
+      while true
         c = consume
 
         case c
@@ -396,7 +417,7 @@ module CSS
 
     # §4.3.14.
     def consume_bad_url_remnants
-      loop do
+      while true
         c = consume
 
         return if c.nil? || c == ')'
@@ -419,17 +440,27 @@ module CSS
       end
     end
 
-    # §4.3.12. Returns [numeric_value, :integer | :number].
+    # §4.3.12. Returns [numeric_value, :integer | :number]. The three digit
+    # runs inline DIGIT_TABLE so the loop bodies stay in the same frame.
     def consume_number
       repr = +''
       flag = :integer
 
       repr << consume if peek == '+' || peek == '-'
-      repr << consume while digit?(peek)
+
+      while (c = @chars[@pos]) && (o = c.ord) < 128 && DIGIT_TABLE[o]
+        repr << c
+        @pos += 1
+      end
 
       if peek == '.' && digit?(peek(1))
         repr << consume
-        repr << consume while digit?(peek)
+
+        while (c = @chars[@pos]) && (o = c.ord) < 128 && DIGIT_TABLE[o]
+          repr << c
+          @pos += 1
+        end
+
         flag = :number
       end
 
@@ -437,7 +468,12 @@ module CSS
           (digit?(peek(1)) || ((peek(1) == '+' || peek(1) == '-') && digit?(peek(2))))
         repr << consume
         repr << consume if peek == '+' || peek == '-'
-        repr << consume while digit?(peek)
+
+        while (c = @chars[@pos]) && (o = c.ord) < 128 && DIGIT_TABLE[o]
+          repr << c
+          @pos += 1
+        end
+
         flag = :number
       end
 
