@@ -4,11 +4,13 @@ module CSS
     # selectors, the four standard combinators (descendant, child, next-
     # sibling, subsequent-sibling), pseudo-classes / pseudo-elements
     # (with recursive parsing of `:not/:is/:where/:has` and AnB parsing of
-    # `:nth-*`), attribute selectors with case-insensitive `i` / `s` flags,
-    # and the `&` nesting selector.
+    # `:nth-*`, including `An+B of S`), attribute selectors with case-
+    # insensitive `i` / `s` flags, the `&` nesting selector, and namespace
+    # prefixes (`*|name`, `|name`; a declared prefix is rejected — there is no
+    # `@namespace` support).
     #
-    # Out of scope (intermediate plan): namespace prefixes, the column
-    # combinator `||`, and forgiving vs strict selector list distinctions.
+    # Out of scope: the column combinator `||`, and forgiving vs strict
+    # selector list distinctions.
     class Parser
       include CSS::TokenCursor
 
@@ -199,7 +201,7 @@ module CSS
         when :ident, :hash, :lbracket, :colon
           true
         when :delim
-          %w[* . &].include?(t.value)
+          %w[* . & |].include?(t.value)
         else
           false
         end
@@ -224,15 +226,52 @@ module CSS
         CompoundSelector.new(components:)
       end
 
+      # Consumes an optional namespace prefix (`*|`, `|`, or `prefix|`) and
+      # returns the namespace: `'*'` (any), `''` (no namespace), or `nil` when
+      # there is no prefix (nothing consumed). A declared prefix (`svg|`) is
+      # invalid — there is no `@namespace` mechanism — so it raises.
+      def try_consume_namespace_prefix
+        t = peek
+
+        # `ident|` or `*|` (immediately, not `…|=` which is an attribute matcher).
+        if (t.type == :ident || (t.type == :delim && t.value == '*')) &&
+           peek(1).type == :delim && peek(1).value == '|' &&
+           peek(2).value != '='
+          parse_error!("undeclared namespace prefix '#{t.value}'") if t.type == :ident
+
+          consume # *
+          consume # |
+          return '*'
+        end
+
+        # Leading `|` — the no-namespace prefix (not `|=`).
+        if t.type == :delim && t.value == '|' && peek(1).value != '='
+          consume # |
+          return ''
+        end
+
+        nil
+      end
+
       def try_consume_type_or_universal
+        ns = try_consume_namespace_prefix
+
         case peek.type
         when :ident
-          TypeSelector.new(name: consume.value)
+          return TypeSelector.new(name: consume.value, namespace: ns)
         when :delim
-          case peek.value
-          when '*' then consume; UniversalSelector.new
-          when '&' then consume; NestingSelector.new
+          if peek.value == '*'
+            consume
+            return UniversalSelector.new(namespace: ns)
           end
+        end
+
+        # A consumed prefix must be followed by a name or `*`.
+        parse_error!("expected element name or '*' after namespace prefix") unless ns.nil?
+
+        if peek.type == :delim && peek.value == '&'
+          consume
+          NestingSelector.new
         end
       end
 
@@ -272,6 +311,8 @@ module CSS
         consume # [
         skip_whitespace
 
+        namespace = try_consume_namespace_prefix
+
         parse_error!('expected attribute name') unless peek.type == :ident
 
         name = consume.value
@@ -287,7 +328,7 @@ module CSS
 
         consume
 
-        AttributeSelector.new(name:, matcher:, value:, case_flag:)
+        AttributeSelector.new(name:, matcher:, value:, case_flag:, namespace:)
       end
 
       def parse_attr_matcher_and_value

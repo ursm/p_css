@@ -33,8 +33,8 @@ module CSS
         when SelectorList      then node.selectors.map { serialize(_1) }.join(', ')
         when ComplexSelector   then serialize_complex(node)
         when CompoundSelector  then node.components.map { serialize(_1) }.join
-        when TypeSelector      then Escape.ident(node.name)
-        when UniversalSelector then '*'
+        when TypeSelector      then ns_prefix(node.namespace) + Escape.ident(node.name)
+        when UniversalSelector then "#{ns_prefix(node.namespace)}*"
         when NestingSelector   then '&'
         when IdSelector        then "##{Escape.ident(node.name)}"
         when ClassSelector     then ".#{Escape.ident(node.name)}"
@@ -65,8 +65,16 @@ module CSS
         out
       end
 
+      def ns_prefix(namespace)
+        case namespace
+        when '*' then '*|'
+        when ''  then '|'
+        else          ''
+        end
+      end
+
       def serialize_attribute(attr)
-        out = +"[#{Escape.ident(attr.name)}"
+        out = +"[#{ns_prefix(attr.namespace)}#{Escape.ident(attr.name)}"
 
         if attr.matcher
           out << ATTR_OPS.fetch(attr.matcher) << Escape.string(attr.value.to_s)

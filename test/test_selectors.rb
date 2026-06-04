@@ -173,6 +173,56 @@ class TestSelectors < Minitest::Test
     assert_raises(CSS::ParseError) { parse_list('::example') }
   end
 
+  # Namespaces --------------------------------------------------------
+
+  def test_namespace_any_prefix_on_type
+    c = first_components('*|div').first
+
+    assert_kind_of S::TypeSelector, c
+    assert_equal 'div', c.name
+    assert_equal '*',   c.namespace
+  end
+
+  def test_namespace_none_prefix_on_type
+    c = first_components('|div').first
+
+    assert_equal 'div', c.name
+    assert_equal '',    c.namespace
+  end
+
+  def test_no_namespace_prefix_is_nil
+    assert_nil first_components('div').first.namespace
+  end
+
+  def test_namespace_on_universal
+    c = first_components('*|*').first
+
+    assert_kind_of S::UniversalSelector, c
+    assert_equal '*', c.namespace
+  end
+
+  def test_namespace_on_attribute
+    c = first_components('[|href]').first
+
+    assert_kind_of S::AttributeSelector, c
+    assert_equal 'href', c.name
+    assert_equal '',     c.namespace
+  end
+
+  def test_dash_attribute_matcher_not_confused_with_namespace
+    c = first_components('[a|=b]').first
+
+    assert_kind_of S::AttributeSelector, c
+    assert_equal 'a',    c.name
+    assert_equal :dash,  c.matcher
+    assert_nil           c.namespace
+  end
+
+  def test_declared_namespace_prefix_is_rejected
+    assert_raises(CSS::ParseError) { parse_list('svg|rect') }
+    assert_raises(CSS::ParseError) { parse_list('[svg|attr]') }
+  end
+
   def test_vendor_prefixed_pseudo_element_is_lenient
     p = first_components('::-webkit-scrollbar').first
 
@@ -289,6 +339,11 @@ class TestSelectors < Minitest::Test
       :has(.a)
       :has(>.a)
       :has(+p,~div)
+      *|div
+      |div
+      *|*
+      [*|href]
+      [|href]
     ].each {|s|
       input = s.gsub('\\ ', ' ')
 

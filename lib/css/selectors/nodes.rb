@@ -24,8 +24,20 @@ module CSS
       def to_s = Selectors::Serializer.serialize(self)
     end
 
-    TypeSelector      = Data.define(:name)        { include Node }
-    UniversalSelector = Data.define              { include Node }
+    # `namespace` is the namespace constraint: `nil` (no prefix — any
+    # namespace), `'*'` (`*|name`, any), or `''` (`|name`, no namespace). A
+    # declared prefix (`svg|name`) is rejected at parse time — there is no
+    # `@namespace` mechanism.
+    TypeSelector = Data.define(:name, :namespace) do
+      include Node
+      def initialize(name:, namespace: nil) = super
+    end
+
+    UniversalSelector = Data.define(:namespace) do
+      include Node
+      def initialize(namespace: nil) = super
+    end
+
     NestingSelector   = Data.define              { include Node }
     IdSelector        = Data.define(:name)        { include Node }
     ClassSelector     = Data.define(:name)        { include Node }
@@ -39,9 +51,14 @@ module CSS
     #   :suffix     — `[a$=b]`
     #   :substring  — `[a*=b]`
     #
-    # `case_flag` is `nil`, `:i`, or `:s`.
-    AttributeSelector = Data.define(:name, :matcher, :value, :case_flag) do
+    # `case_flag` is `nil`, `:i`, or `:s`. `namespace` is the attribute
+    # namespace constraint (`nil` = no prefix, `'*'` = any, `''` = no
+    # namespace); a declared prefix is rejected. Attribute namespaces aren't
+    # tracked at match time (HTML attributes are all in no namespace), so
+    # matching is by local name.
+    AttributeSelector = Data.define(:name, :matcher, :value, :case_flag, :namespace) do
       include Node
+      def initialize(name:, matcher:, value:, case_flag:, namespace: nil) = super
     end
 
     # `argument` is `nil`, a `SelectorList` (`:not/:is/:where/:has`), an

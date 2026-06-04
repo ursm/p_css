@@ -114,8 +114,8 @@ module CSS
 
       def match_simple(element, simple, cache, state)
         case simple
-        when TypeSelector      then tag_of(element, cache).casecmp?(simple.name)
-        when UniversalSelector then true
+        when TypeSelector      then match_type(element, simple, cache)
+        when UniversalSelector then simple.namespace == '' ? in_no_namespace?(element) : true
         when IdSelector        then id_of(element, cache) == simple.name
         when ClassSelector     then classes_of(element, cache).include?(simple.name)
         when AttributeSelector then match_attribute(element, simple)
@@ -167,6 +167,25 @@ module CSS
         return EMPTY_CLASSES if v.nil? || v.empty?
 
         v.to_s.split(' ')
+      end
+
+      # Type matching ---------------------------------------------------
+
+      # A bare `name` / `*|name` matches by local name in any namespace; a
+      # `|name` (namespace `''`) additionally requires the element to be in no
+      # namespace. The no-namespace constraint is enforced only when the
+      # element exposes namespace info (`respond_to?(:namespace)`); otherwise
+      # it is skipped and matching is by local name alone.
+      def match_type(element, sel, cache)
+        return false unless tag_of(element, cache).casecmp?(sel.name)
+
+        sel.namespace == '' ? in_no_namespace?(element) : true
+      end
+
+      def in_no_namespace?(element)
+        return true unless element.respond_to?(:namespace)
+
+        element.namespace.nil?
       end
 
       # Attribute matching ----------------------------------------------

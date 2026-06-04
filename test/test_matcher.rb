@@ -227,6 +227,22 @@ class TestMatcher < Minitest::Test
     refute(lis.any? { _1.text == '2' && CSS.matches?(_1, 'li:nth-child(1 of .x)') })
   end
 
+  # Namespaces ------------------------------------------------------
+
+  def test_namespace_no_namespace_constraint
+    doc = Nokogiri::XML('<root xmlns:svg="http://www.w3.org/2000/svg"><svg:rect/><rect/></root>')
+    plain = doc.at_xpath('//*[local-name()="rect" and not(namespace-uri())]')
+    svg   = doc.at_xpath('//svg:rect', 'svg' => 'http://www.w3.org/2000/svg')
+
+    # `|rect` requires no namespace.
+    assert CSS.matches?(plain, '|rect')
+    refute CSS.matches?(svg,   '|rect')
+
+    # `*|rect` and bare `rect` match in any namespace (by local name).
+    assert CSS.matches?(svg, '*|rect')
+    assert CSS.matches?(svg, 'rect')
+  end
+
   # Form state ------------------------------------------------------
 
   def test_checked_checkbox
