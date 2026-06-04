@@ -282,6 +282,39 @@ class TestMatcher < Minitest::Test
     assert_match_tags 'a:any-link', ['a']
   end
 
+  # :default --------------------------------------------------------
+
+  def test_default_selected_option
+    opt = Nokogiri::HTML::DocumentFragment.parse('<select><option>a</option><option selected>b</option></select>').at_css('option[selected]')
+
+    assert CSS.matches?(opt, ':default')
+  end
+
+  def test_default_checked_checkbox
+    box = Nokogiri::HTML::DocumentFragment.parse('<input type="checkbox" checked>').at_css('input')
+
+    assert CSS.matches?(box, ':default')
+  end
+
+  def test_default_first_submit_button
+    form    = Nokogiri::HTML::DocumentFragment.parse('<form><button>First</button><button>Second</button></form>').at_css('form')
+    buttons = form.css('button').to_a
+
+    assert CSS.matches?(buttons[0], ':default')
+    refute CSS.matches?(buttons[1], ':default')
+  end
+
+  # Constraint-validation states (state: opt-in) --------------------
+
+  def test_validity_states_require_state
+    el = Nokogiri::HTML::DocumentFragment.parse('<input>').at_css('input')
+
+    refute CSS.matches?(el, ':invalid')
+    assert CSS.matches?(el, ':invalid', state: {invalid: [el]})
+    assert CSS.matches?(el, ':user-invalid', state: {'user-invalid' => [el]})
+    assert CSS.matches?(el, ':indeterminate', state: {indeterminate: [el]})
+  end
+
   # Lang / dir -------------------------------------------------------
 
   def test_lang_inherited_from_root

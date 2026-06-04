@@ -17,8 +17,9 @@ module CSS
     #
     # Pseudo-classes that depend on user-agent state (`:hover`, `:focus`,
     # `:visited`, etc.) return false by default; pass an explicit `state:`
-    # mapping to opt into stateful matching. Validity-API and viewport-
-    # only states (`:fullscreen`, `:valid`, …) are not exposed.
+    # mapping to opt into stateful matching. Constraint-validation states
+    # (`:valid`, `:invalid`, `:user-valid`, `:user-invalid`, `:indeterminate`)
+    # can't be derived from the DOM, so they are also `state:` opt-ins.
     module Matcher
       extend self
 
@@ -30,7 +31,10 @@ module CSS
       # User-agent state pseudos. The matcher returns `false` for these
       # unless the caller passes a `state:` Hash describing which
       # elements (or "all") should match.
-      STATEFUL_PSEUDOS = %w[hover focus focus-within focus-visible active visited target].to_set.freeze
+      STATEFUL_PSEUDOS = %w[
+        hover focus focus-within focus-visible active visited target
+        valid invalid user-valid user-invalid indeterminate
+      ].to_set.freeze
 
       # Per spec these states propagate up the ancestor chain — if a
       # descendant is hovered/active/contains-focus, the ancestors
@@ -338,6 +342,7 @@ module CSS
         when 'read-only'                 then read_only?(element)
         when 'read-write'                then read_write?(element)
         when 'placeholder-shown'         then placeholder_shown?(element)
+        when 'default'                   then default?(element)
         when 'lang'                      then match_lang(element, pc.argument)
         when 'dir'                       then match_dir(element, pc.argument)
         when 'defined'                   then true
@@ -622,6 +627,68 @@ module CSS
 
         v = attr(element, 'value')
         v.nil? || v.empty?
+      end
+
+      # `:default` — a selected option, a checked checkbox / radio, or a
+      # form's first submit button. Computed structurally (no host state).
+      def default?(element)
+        case tag(element)
+        when 'option'
+          !attr(element, 'selected').nil?
+        when 'input'
+          type = attr(element, 'type').to_s.downcase
+
+          if type == 'checkbox' || type == 'radio'
+            !attr(element, 'checked').nil?
+          elsif type == 'submit' || type == 'image'
+            default_submit?(element)
+          else
+            false
+          end
+        when 'button'
+          (attr(element, 'type') || 'submit').to_s.downcase == 'submit' && default_submit?(element)
+        else
+          false
+        end
+      end
+
+      def submit_button?(element)
+        case tag(element)
+        when 'button'
+          (attr(element, 'type') || 'submit').to_s.downcase == 'submit'
+        when 'input'
+          type = attr(element, 'type').to_s.downcase
+          type == 'submit' || type == 'image'
+        else
+          false
+        end
+      end
+
+      def default_submit?(element)
+        form     = nil
+        ancestor = parent_element(element)
+
+        while ancestor
+          if tag(ancestor) == 'form'
+            form = ancestor
+            break
+          end
+
+          ancestor = parent_element(ancestor)
+        end
+
+        !form.nil? && same_node?(first_submit(form), element)
+      end
+
+      def first_submit(node)
+        element_children(node).each do |child|
+          return child if submit_button?(child)
+
+          found = first_submit(child)
+          return found if found
+        end
+
+        nil
       end
 
       def match_lang(element, argument)
