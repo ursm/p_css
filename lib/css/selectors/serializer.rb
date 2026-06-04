@@ -96,6 +96,12 @@ module CSS
       end
 
       def serialize_anb(anb)
+        out = serialize_anb_value(anb)
+        out += " of #{serialize(anb.of)}" if anb.of
+        out
+      end
+
+      def serialize_anb_value(anb)
         return 'even' if anb.step == 2 && anb.offset.zero?
         return 'odd'  if anb.step == 2 && anb.offset == 1
 

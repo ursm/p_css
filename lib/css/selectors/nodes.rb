@@ -52,9 +52,15 @@ module CSS
 
     # `An+B` integer pair. `step` is the `n` coefficient, `offset` is the
     # constant term. `even` => AnB(2, 0), `odd` => AnB(2, 1), `5` => AnB(0, 5),
-    # `n` => AnB(1, 0).
-    AnB = Data.define(:step, :offset) do
+    # `n` => AnB(1, 0). `of` is the optional `of S` filter (a `SelectorList`),
+    # `nil` except on `:nth-child` / `:nth-last-child`.
+    AnB = Data.define(:step, :offset, :of) do
       include Node
+
+      def initialize(step:, offset:, of: nil)
+        super
+      end
+
       def to_s = Selectors::Serializer.serialize(self)
     end
 

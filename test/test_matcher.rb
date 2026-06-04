@@ -200,6 +200,33 @@ class TestMatcher < Minitest::Test
     refute_includes matched_tags('ul:has(.nonexistent)'), 'ul'
   end
 
+  # :nth-child(An+B of S) -------------------------------------------
+
+  def test_nth_child_of_selector
+    doc = Nokogiri::HTML(<<~HTML)
+      <ul>
+        <li class="x">1</li>
+        <li>2</li>
+        <li class="x">3</li>
+        <li class="x">4</li>
+      </ul>
+    HTML
+    lis = doc.css('li').to_a
+
+    # Among the .x items (li 1, 3, 4), the 2nd is li "3".
+    matched = lis.select { CSS.matches?(_1, 'li:nth-child(2 of .x)') }
+
+    assert_equal ['3'], matched.map(&:text)
+  end
+
+  def test_nth_child_of_selector_requires_self_match
+    doc = Nokogiri::HTML('<ul><li class="x">1</li><li>2</li></ul>')
+    lis = doc.css('li').to_a
+
+    # li "2" is not .x, so it never matches regardless of index.
+    refute(lis.any? { _1.text == '2' && CSS.matches?(_1, 'li:nth-child(1 of .x)') })
+  end
+
   # Form state ------------------------------------------------------
 
   def test_checked_checkbox

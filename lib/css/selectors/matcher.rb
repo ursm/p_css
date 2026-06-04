@@ -214,10 +214,10 @@ module CSS
         when 'first-of-type'             then same_type_previous(element).nil?
         when 'last-of-type'              then same_type_next(element).nil?
         when 'only-of-type'              then same_type_previous(element).nil? && same_type_next(element).nil?
-        when 'nth-child'                 then match_nth(element, pc.argument, of_type: false, from_end: false)
-        when 'nth-last-child'            then match_nth(element, pc.argument, of_type: false, from_end: true)
-        when 'nth-of-type'               then match_nth(element, pc.argument, of_type: true,  from_end: false)
-        when 'nth-last-of-type'          then match_nth(element, pc.argument, of_type: true,  from_end: true)
+        when 'nth-child'                 then match_nth(element, pc.argument, of_type: false, from_end: false, cache:, state:)
+        when 'nth-last-child'            then match_nth(element, pc.argument, of_type: false, from_end: true,  cache:, state:)
+        when 'nth-of-type'               then match_nth(element, pc.argument, of_type: true,  from_end: false, cache:, state:)
+        when 'nth-last-of-type'          then match_nth(element, pc.argument, of_type: true,  from_end: true,  cache:, state:)
         when 'empty'                     then empty?(element)
         when 'link', 'any-link'          then link?(element)
         when 'enabled'                   then disableable?(element) && !disabled?(element)
@@ -350,10 +350,19 @@ module CSS
         combinator == :next_sibling || combinator == :subsequent_sibling
       end
 
-      def match_nth(element, anb, of_type:, from_end:)
+      def match_nth(element, anb, of_type:, from_end:, cache:, state:)
         return false unless anb.is_a?(AnB)
 
-        index = nth_index(element, of_type:, from_end:)
+        index =
+          if anb.of
+            # `of S` — the element must itself match S, and is indexed among
+            # only the siblings that also match S.
+            return false unless matches?(element, anb.of, cache: cache, state: state)
+
+            nth_index_matching(element, anb.of, from_end:, cache:, state:)
+          else
+            nth_index(element, of_type:, from_end:)
+          end
 
         return false if index.nil?
 
@@ -384,6 +393,24 @@ module CSS
 
         idx = siblings.index { same_node?(_1, element) }
         idx && idx + 1
+      end
+
+      # Index of `element` (1-based) counting only the siblings that match the
+      # `of S` selector list — used by `:nth-child(An+B of S)`.
+      def nth_index_matching(element, selector_list, from_end:, cache:, state:)
+        return nil if parent_element(element).nil?
+
+        direction = from_end ? :next_element : :previous_element
+        count     = 0
+        sib       = send(direction, element)
+
+        while sib
+          count += 1 if matches?(sib, selector_list, cache: cache, state: state)
+
+          sib = send(direction, sib)
+        end
+
+        count + 1
       end
 
       # Form / link state -----------------------------------------------

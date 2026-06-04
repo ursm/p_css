@@ -72,6 +72,15 @@ class TestSpecificity < Minitest::Test
     assert_spec 0, 0, 2, 'div:has(> p)'
   end
 
+  def test_nth_child_plain
+    assert_spec 0, 1, 0, ':nth-child(2n+1)'
+  end
+
+  def test_nth_child_of_selector_adds_argument
+    # (0,1,0) for :nth-child plus the most specific complex selector in S.
+    assert_spec 0, 2, 0, ':nth-child(2n of .foo)'
+  end
+
   def test_selector_list_takes_max
     assert_spec 1, 0, 0, '.a, #b'
   end

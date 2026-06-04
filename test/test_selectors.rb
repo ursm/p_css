@@ -193,6 +193,27 @@ class TestSelectors < Minitest::Test
     assert_kind_of S::AnB, p.argument
     assert_equal   2,      p.argument.step
     assert_equal   1,      p.argument.offset
+    assert_nil     p.argument.of
+  end
+
+  def test_nth_child_of_selector
+    p = first_components(':nth-child(2n+1 of .x)').first
+
+    assert_kind_of S::AnB,          p.argument
+    assert_equal   2,               p.argument.step
+    assert_equal   1,               p.argument.offset
+    assert_kind_of S::SelectorList, p.argument.of
+    assert_equal   '.x',            CSS.serialize(p.argument.of)
+  end
+
+  def test_nth_of_type_rejects_of_clause
+    assert_raises(CSS::ParseError) { parse_list(':nth-of-type(2n of p)') }
+  end
+
+  def test_nth_child_of_selector_round_trip
+    assert_equal ':nth-child(2n+3 of .x)', round_trip(':nth-child( 2n + 3 of .x )')
+    assert_equal ':nth-child(odd of .x)', round_trip(':nth-child(2n+1 of .x)')
+    assert_equal ':nth-child(even of li.a)', round_trip(':nth-child(even of li.a)')
   end
 
   def test_nth_child_keyword

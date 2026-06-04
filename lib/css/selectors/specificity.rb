@@ -80,6 +80,12 @@ module CSS
           else
             Specificity.new(a: 0, b: 1, c: 0)
           end
+        when 'nth-child', 'nth-last-child'
+          # `(0,1,0)` plus, for the `of S` form, the most specific complex
+          # selector in S.
+          base = Specificity.new(a: 0, b: 1, c: 0)
+          of   = node.argument.is_a?(AnB) ? node.argument.of : nil
+          of.is_a?(SelectorList) ? base + calculate(of) : base
         else
           Specificity.new(a: 0, b: 1, c: 0)
         end

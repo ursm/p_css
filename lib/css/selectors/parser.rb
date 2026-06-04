@@ -380,10 +380,44 @@ module CSS
         elsif n == 'has'
           parse_relative_selector_list
         elsif ANB_PSEUDOS.include?(n)
-          AnBParser.parse(collect_argument_tokens)
+          parse_nth_argument(allow_of: n == 'nth-child' || n == 'nth-last-child')
         else
           collect_argument_tokens
         end
+      end
+
+      # `:nth-*` argument: An+B, optionally followed by `of <selector-list>`
+      # (Selectors-4, only on `:nth-child` / `:nth-last-child`). Collects the
+      # An+B tokens up to a top-level `of` ident, then parses S inline.
+      def parse_nth_argument(allow_of:)
+        anb_tokens = []
+        depth      = 0
+
+        loop do
+          t = peek
+
+          parse_error!('unexpected EOF in :nth argument') if t.type == :eof
+
+          if depth.zero?
+            break if t.type == :rparen
+            break if allow_of && t.type == :ident && t.value.downcase == 'of'
+          end
+
+          case t.type
+          when :function, :lparen then depth += 1
+          when :rparen            then depth -= 1
+          end
+
+          anb_tokens << consume
+        end
+
+        anb = AnBParser.parse(anb_tokens)
+
+        return anb unless allow_of && peek.type == :ident && peek.value.downcase == 'of'
+
+        consume # `of`
+        skip_whitespace
+        AnB.new(step: anb.step, offset: anb.offset, of: parse_selector_list)
       end
 
       # `:has()` argument: a comma-separated list of relative selectors, each
