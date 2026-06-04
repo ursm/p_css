@@ -221,10 +221,22 @@ class TestSelectors < Minitest::Test
     assert_equal 'hover', inner.name
   end
 
-  def test_has_falls_back_to_tokens
+  def test_has_parses_relative_selector_list
     p = first_components(':has(> .child)').first
 
-    assert_kind_of Array, p.argument
+    assert_kind_of S::RelativeSelectorList, p.argument
+
+    rel = p.argument.selectors.first
+
+    assert_kind_of S::RelativeSelector, rel
+    assert_equal :child, rel.combinator
+    assert_kind_of S::ComplexSelector, rel.complex
+  end
+
+  def test_has_default_combinator_is_descendant
+    rel = first_components(':has(.child)').first.argument.selectors.first
+
+    assert_equal :descendant, rel.combinator
   end
 
   def test_unknown_functional_pseudo_keeps_tokens
@@ -253,6 +265,9 @@ class TestSelectors < Minitest::Test
       ::before
       :nth-child(2n+1)
       :is(.a,.b)
+      :has(.a)
+      :has(>.a)
+      :has(+p,~div)
     ].each {|s|
       input = s.gsub('\\ ', ' ')
 

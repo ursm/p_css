@@ -10,6 +10,15 @@ module CSS
         subsequent_sibling:  ' ~ '
       }.freeze
 
+      # Leading combinator of a `:has()` relative selector (descendant is
+      # implicit, so it has no prefix).
+      LEADING_COMBINATOR_GLUE = {
+        descendant:          '',
+        child:               '> ',
+        next_sibling:        '+ ',
+        subsequent_sibling:  '~ '
+      }.freeze
+
       ATTR_OPS = {
         exact:     '=',
         includes:  '~=',
@@ -30,15 +39,21 @@ module CSS
         when IdSelector        then "##{Escape.ident(node.name)}"
         when ClassSelector     then ".#{Escape.ident(node.name)}"
         when AttributeSelector then serialize_attribute(node)
-        when PseudoClass       then serialize_pseudo(node, '')
-        when PseudoElement     then serialize_pseudo(node, ':')
-        when AnB               then serialize_anb(node)
+        when PseudoClass          then serialize_pseudo(node, '')
+        when PseudoElement        then serialize_pseudo(node, ':')
+        when AnB                  then serialize_anb(node)
+        when RelativeSelectorList then node.selectors.map { serialize_relative(_1) }.join(', ')
+        when RelativeSelector     then serialize_relative(node)
         else
           raise ArgumentError, "cannot serialize selector node #{node.class}"
         end
       end
 
       private
+
+      def serialize_relative(rel)
+        LEADING_COMBINATOR_GLUE.fetch(rel.combinator) + serialize(rel.complex)
+      end
 
       def serialize_complex(cs)
         out = +serialize(cs.compounds[0])
@@ -71,9 +86,10 @@ module CSS
 
       def serialize_argument(arg)
         case arg
-        when SelectorList then serialize(arg)
-        when AnB          then serialize_anb(arg)
-        when Array        then CSS::Serializer.serialize(arg)
+        when SelectorList         then serialize(arg)
+        when RelativeSelectorList then serialize(arg)
+        when AnB                  then serialize_anb(arg)
+        when Array                then CSS::Serializer.serialize(arg)
         else
           raise ArgumentError, "unknown pseudo argument #{arg.class}"
         end

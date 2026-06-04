@@ -57,5 +57,21 @@ module CSS
       include Node
       def to_s = Selectors::Serializer.serialize(self)
     end
+
+    # The argument of `:has()` — a comma-separated list of relative selectors.
+    RelativeSelectorList = Data.define(:selectors) do
+      include Node
+      def to_s = Selectors::Serializer.serialize(self)
+    end
+
+    # One relative selector: an (optionally explicit) leading combinator
+    # relative to the `:has()` anchor, then a complex selector. `combinator`
+    # is `:descendant` (the implicit default, `:has(.x)`), `:child`
+    # (`:has(> .x)`), `:next_sibling` (`:has(+ .x)`), or `:subsequent_sibling`
+    # (`:has(~ .x)`).
+    RelativeSelector = Data.define(:combinator, :complex) do
+      include Node
+      def to_s = Selectors::Serializer.serialize(self)
+    end
   end
 end

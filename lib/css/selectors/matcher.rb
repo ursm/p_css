@@ -205,7 +205,7 @@ module CSS
         case name
         when 'is', 'where', 'matches'   then match_selector_list_arg(element, pc.argument, cache, state)
         when 'not'                       then negate_selector_list_arg(element, pc.argument, cache, state)
-        when 'has'                       then false
+        when 'has'                       then match_has(element, pc.argument, cache, state)
         when 'root'                      then parent_element(element).nil?
         when 'scope'                     then parent_element(element).nil?
         when 'first-child'               then previous_element(element).nil?
@@ -269,6 +269,85 @@ module CSS
 
       def negate_selector_list_arg(element, arg, cache, state)
         arg.is_a?(SelectorList) && !matches?(element, arg, cache: cache, state: state)
+      end
+
+      # `:has(...)` — searches the anchor's subtree (descendant / child) or its
+      # following siblings (`+` / `~`) for a subject whose right-to-left match
+      # chains back to the anchor via the relative selector's leading
+      # combinator. Each relative selector is tried independently.
+      def match_has(anchor, argument, cache, state)
+        return false unless argument.is_a?(RelativeSelectorList)
+
+        argument.selectors.any? { has_relative?(anchor, _1, cache, state) }
+      end
+
+      def has_relative?(anchor, rel, cache, state)
+        return has_in_subtree?(anchor, rel, anchor, cache, state) unless sibling_leading?(rel.combinator)
+
+        sib = next_element(anchor)
+
+        while sib
+          return true if rel_at?(sib, rel, rel.complex.compounds.size - 1, anchor, cache, state)
+          return true if has_in_subtree?(sib, rel, anchor, cache, state)
+
+          sib = next_element(sib)
+        end
+
+        false
+      end
+
+      def has_in_subtree?(node, rel, anchor, cache, state)
+        element_children(node).each do |child|
+          return true if rel_at?(child, rel, rel.complex.compounds.size - 1, anchor, cache, state)
+          return true if has_in_subtree?(child, rel, anchor, cache, state)
+        end
+
+        false
+      end
+
+      # Matches the relative selector's compound at `index` against `element`,
+      # then walks the remaining compounds right-to-left; at index 0 the chain
+      # must connect back to the anchor via the leading combinator.
+      def rel_at?(element, rel, index, anchor, cache, state)
+        return false if element.nil?
+        return false unless match_compound(element, rel.complex.compounds[index], cache, state)
+        return connects_to_anchor?(element, rel.combinator, anchor) if index.zero?
+
+        case rel.complex.combinators[index - 1]
+        when :child
+          rel_at?(parent_element(element), rel, index - 1, anchor, cache, state)
+        when :descendant
+          a = parent_element(element)
+          a = parent_element(a) until a.nil? || rel_at?(a, rel, index - 1, anchor, cache, state)
+          !a.nil?
+        when :next_sibling
+          rel_at?(previous_element(element), rel, index - 1, anchor, cache, state)
+        when :subsequent_sibling
+          s = previous_element(element)
+          s = previous_element(s) until s.nil? || rel_at?(s, rel, index - 1, anchor, cache, state)
+          !s.nil?
+        end
+      end
+
+      def connects_to_anchor?(element, leading, anchor)
+        case leading
+        when :child
+          same_node?(parent_element(element), anchor)
+        when :descendant
+          a = parent_element(element)
+          a = parent_element(a) until a.nil? || same_node?(a, anchor)
+          !a.nil?
+        when :next_sibling
+          same_node?(previous_element(element), anchor)
+        when :subsequent_sibling
+          s = previous_element(element)
+          s = previous_element(s) until s.nil? || same_node?(s, anchor)
+          !s.nil?
+        end
+      end
+
+      def sibling_leading?(combinator)
+        combinator == :next_sibling || combinator == :subsequent_sibling
       end
 
       def match_nth(element, anb, of_type:, from_end:)

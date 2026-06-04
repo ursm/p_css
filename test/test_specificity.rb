@@ -62,6 +62,16 @@ class TestSpecificity < Minitest::Test
     assert_spec 0, 1, 0, ':not(.foo, [href])'
   end
 
+  def test_has_uses_max_argument
+    # `:has()` contributes the most specific complex selector in its argument
+    # (like `:is`), so `#a` dominates `.b`. Plus the type selector `div`.
+    assert_spec 1, 0, 1, 'div:has(#a, .b)'
+  end
+
+  def test_has_child_argument_specificity
+    assert_spec 0, 0, 2, 'div:has(> p)'
+  end
+
   def test_selector_list_takes_max
     assert_spec 1, 0, 0, '.a, #b'
   end

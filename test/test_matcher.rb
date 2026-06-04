@@ -179,8 +179,25 @@ class TestMatcher < Minitest::Test
     assert_equal 2, matched_tags('ul li:not(.active)').size
   end
 
-  def test_has_returns_false_until_supported
-    refute_includes matched_tags(':has(.active)'), 'ul'
+  def test_has_descendant
+    # `ul:has(.active)` matches the <ul> because it contains <li class="active">.
+    assert_includes matched_tags('ul:has(.active)'), 'ul'
+  end
+
+  def test_has_child_combinator
+    # `ul:has(> .active)` — `.active` must be a direct child of the <ul>.
+    assert_includes matched_tags('ul:has(> .active)'), 'ul'
+    # The container div has no direct `.active` child (it is nested in the ul).
+    refute_includes matched_tags('div:has(> .active)'), 'div'
+  end
+
+  def test_has_next_sibling
+    # `h1:has(+ p)` — the <h1> is immediately followed by a <p>.
+    assert_includes matched_tags('h1:has(+ p)'), 'h1'
+  end
+
+  def test_has_no_match
+    refute_includes matched_tags('ul:has(.nonexistent)'), 'ul'
   end
 
   # Form state ------------------------------------------------------

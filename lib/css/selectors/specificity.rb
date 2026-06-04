@@ -66,7 +66,15 @@ module CSS
         case node.name.downcase
         when 'where'
           Specificity::ZERO
-        when 'is', 'not', 'has', 'matches'
+        when 'has'
+          # `:has()` contributes the most specific complex selector in its
+          # relative-selector-list argument (like `:is`).
+          if node.argument.is_a?(RelativeSelectorList)
+            node.argument.selectors.map { calculate(_1.complex) }.max || Specificity.new(a: 0, b: 1, c: 0)
+          else
+            Specificity.new(a: 0, b: 1, c: 0)
+          end
+        when 'is', 'not', 'matches'
           if node.argument.is_a?(SelectorList)
             calculate(node.argument)
           else

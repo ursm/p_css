@@ -12,10 +12,6 @@ module CSS
     class Parser
       include CSS::TokenCursor
 
-      # `:has()` is intentionally excluded — it takes a *relative* selector
-      # list (each item may start with a combinator) which would require
-      # extending the ComplexSelector AST. Falls back to opaque component
-      # values for now.
       SELECTOR_LIST_PSEUDOS = %w[is where not matches].freeze
       ANB_PSEUDOS           = %w[nth-child nth-last-child nth-of-type nth-last-of-type].freeze
 
@@ -381,11 +377,51 @@ module CSS
 
         if SELECTOR_LIST_PSEUDOS.include?(n)
           parse_selector_list
+        elsif n == 'has'
+          parse_relative_selector_list
         elsif ANB_PSEUDOS.include?(n)
           AnBParser.parse(collect_argument_tokens)
         else
           collect_argument_tokens
         end
+      end
+
+      # `:has()` argument: a comma-separated list of relative selectors, each
+      # an optional leading combinator (`>`, `+`, `~`; default descendant)
+      # followed by a complex selector. Terminated by EOF or the closing `)`.
+      def parse_relative_selector_list
+        skip_whitespace
+
+        parse_error!('empty :has() argument') if list_terminator?(peek)
+
+        selectors = [parse_relative_selector]
+
+        loop do
+          skip_whitespace
+          break unless peek.type == :comma
+
+          consume
+          skip_whitespace
+          selectors << parse_relative_selector
+        end
+
+        RelativeSelectorList.new(selectors:)
+      end
+
+      def parse_relative_selector
+        skip_whitespace
+
+        combinator = :descendant
+
+        t = peek
+
+        if t.type == :delim && (combo = combinator_for_delim(t.value))
+          combinator = combo
+          consume
+          skip_whitespace
+        end
+
+        RelativeSelector.new(combinator:, complex: parse_complex_selector)
       end
 
       # Collects all tokens up to the closing `)` of the current functional
