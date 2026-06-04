@@ -160,6 +160,39 @@ class TestNesting < Minitest::Test
     assert_equal src, desugar(src)
   end
 
+  # Combinator-led nesting (the nested prelude starts with a combinator,
+  # implying a leading `&`).
+
+  def test_combinator_led_nesting_child
+    assert_desugars(
+      '.a { > .c { color: red; } }',
+      ".a > .c {\n  color: red;\n}"
+    )
+  end
+
+  def test_combinator_led_nesting_sibling_combinators
+    assert_desugars('.a { + .c { x: 1; } }', ".a + .c {\n  x: 1;\n}")
+    assert_desugars('.a { ~ .c { x: 1; } }', ".a ~ .c {\n  x: 1;\n}")
+  end
+
+  def test_combinator_led_nesting_multi_compound_parent
+    assert_desugars(
+      '.a .b { > .c { x: 1; } }',
+      ".a .b > .c {\n  x: 1;\n}"
+    )
+  end
+
+  def test_combinator_led_nesting_multi_selector_parent_uses_is
+    assert_desugars(
+      '.a, .b { > .c { x: 1; } }',
+      ":is(.a, .b) > .c {\n  x: 1;\n}"
+    )
+  end
+
+  def test_top_level_leading_combinator_is_still_invalid
+    assert_raises(CSS::ParseError) { CSS.parse_selector_list('> .c') }
+  end
+
   def test_re_desugar_is_idempotent
     src = '.a { & .b { & .c { color: red; } } }'
     once  = desugar(src)

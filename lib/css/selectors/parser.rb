@@ -47,6 +47,14 @@ module CSS
           new(tokens_from(input)).parse_selector_complete
         end
 
+        # Like `parse_selector_list`, but each complex selector may begin with
+        # a combinator (`>` / `+` / `~`), synthesising a leading `&`. Used for
+        # CSS Nesting nested rules, whose preludes follow the
+        # `<relative-selector-list>` grammar.
+        def parse_nesting_selector_list(input)
+          new(tokens_from(input)).parse_nesting_selector_list_complete
+        end
+
         private
 
         def tokens_from(input)
@@ -149,6 +157,58 @@ module CSS
         end
 
         ComplexSelector.new(compounds:, combinators:)
+      end
+
+      def parse_nesting_selector_list_complete
+        list = parse_nesting_selector_list
+
+        skip_whitespace
+
+        parse_error!("trailing tokens after selector list: #{peek.type}") unless peek.type == :eof
+
+        list
+      end
+
+      def parse_nesting_selector_list
+        skip_whitespace
+
+        parse_error!('empty selector list') if list_terminator?(peek)
+
+        selectors = [parse_nesting_complex_selector]
+
+        loop do
+          skip_whitespace
+          break unless peek.type == :comma
+
+          consume
+          skip_whitespace
+          selectors << parse_nesting_complex_selector
+        end
+
+        SelectorList.new(selectors:)
+      end
+
+      # A nested-rule complex selector may start with a combinator, which
+      # implies a leading `&` (`> .c` → `& > .c`), preserving the
+      # `compounds == combinators + 1` invariant.
+      def parse_nesting_complex_selector
+        skip_whitespace
+
+        t = peek
+
+        if t.type == :delim && (combo = combinator_for_delim(t.value))
+          consume
+          skip_whitespace
+
+          rest = parse_complex_selector
+
+          return ComplexSelector.new(
+            compounds:   [CompoundSelector.new(components: [NestingSelector.new]), *rest.compounds],
+            combinators: [combo, *rest.combinators]
+          )
+        end
+
+        parse_complex_selector
       end
 
       private

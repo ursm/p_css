@@ -33,7 +33,16 @@ module CSS
     # effective selector; subsequent rules are the nested ones recursively
     # desugared.
     def desugar_qualified_rule(rule, parent_list:)
-      own       = Selectors::Parser.parse_selector_list(rule.prelude)
+      # Nested rules follow the <relative-selector-list> grammar (a selector
+      # may begin with a combinator); top-level rules keep the strict parser,
+      # so a top-level leading combinator is still a syntax error.
+      own =
+        if parent_list
+          Selectors::Parser.parse_nesting_selector_list(rule.prelude)
+        else
+          Selectors::Parser.parse_selector_list(rule.prelude)
+        end
+
       effective = parent_list ? substitute_nesting(own, parent_list) : own
 
       decls, rules = partition_block_items(rule.block.items, parent_list: effective)
