@@ -130,6 +130,15 @@ class TestCascade < Minitest::Test
     assert_equal 'red', value(c.resolve(el)['color'])
   end
 
+  def test_unknown_pseudo_element_rule_is_dropped
+    el = doc('<div>hi</div>').at_css('div')
+    # `::example` is an unknown pseudo-element — an invalid selector — so its
+    # rule is dropped, but the following valid rule still resolves.
+    c  = cascade('::example { color: blue } div { color: red }')
+
+    assert_equal 'red', value(c.resolve(el)['color'])
+  end
+
   def test_unknown_at_rule_is_skipped_or_passthrough
     el = doc('<p class="x">hi</p>').at_css('p')
 

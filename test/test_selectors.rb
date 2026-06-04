@@ -169,6 +169,24 @@ class TestSelectors < Minitest::Test
     assert_kind_of Array,            p.argument
   end
 
+  def test_unknown_pseudo_element_is_invalid
+    assert_raises(CSS::ParseError) { parse_list('::example') }
+  end
+
+  def test_vendor_prefixed_pseudo_element_is_lenient
+    p = first_components('::-webkit-scrollbar').first
+
+    assert_kind_of S::PseudoElement, p
+    assert_equal '-webkit-scrollbar', p.name
+  end
+
+  def test_legacy_single_colon_pseudo_element_stays_pseudo_class
+    p = first_components(':before').first
+
+    assert_kind_of S::PseudoClass, p
+    assert_equal 'before', p.name
+  end
+
   def test_nth_child_with_anb
     p = first_components(':nth-child(2n+1)').first
 

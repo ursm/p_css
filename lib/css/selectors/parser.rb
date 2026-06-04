@@ -19,6 +19,19 @@ module CSS
       SELECTOR_LIST_PSEUDOS = %w[is where not matches].freeze
       ANB_PSEUDOS           = %w[nth-child nth-last-child nth-of-type nth-last-of-type].freeze
 
+      # Per the Selectors grammar (and every browser's querySelector), a known
+      # pseudo-element is a valid selector that simply matches no element, while
+      # an unknown one (`::example`) is a syntax error. Vendor-prefixed
+      # `::-webkit-…` are accepted leniently since they match nothing.
+      KNOWN_PSEUDO_ELEMENTS = %w[
+        before after first-line first-letter
+        marker placeholder selection backdrop file-selector-button
+        target-text grammar-error spelling-error highlight
+        cue cue-region part slotted details-content
+        view-transition view-transition-group view-transition-image-pair
+        view-transition-old view-transition-new
+      ].to_set.freeze
+
       ATTR_MATCHERS = {
         '~' => :includes,
         '|' => :dash,
@@ -332,21 +345,31 @@ module CSS
       end
 
       def parse_pseudo_body(element:)
-        case peek.type
-        when :ident
-          name = consume.value
-          build_pseudo(element:, name:, argument: nil)
-        when :function
-          name = consume.value
-          arg  = parse_pseudo_argument(name)
+        head = peek.type
 
-          parse_error!("expected ')' to close :#{name}") unless peek.type == :rparen
-
-          consume
-          build_pseudo(element:, name:, argument: arg)
-        else
-          parse_error!("expected pseudo-#{element ? 'element' : 'class'} name, got #{peek.type}")
+        unless head == :ident || head == :function
+          parse_error!("expected pseudo-#{element ? 'element' : 'class'} name, got #{head}")
         end
+
+        name = consume.value
+
+        if element && !known_pseudo_element?(name)
+          parse_error!("unknown pseudo-element ::#{name}")
+        end
+
+        return build_pseudo(element:, name:, argument: nil) if head == :ident
+
+        arg = parse_pseudo_argument(name)
+
+        parse_error!("expected ')' to close :#{name}") unless peek.type == :rparen
+
+        consume
+        build_pseudo(element:, name:, argument: arg)
+      end
+
+      def known_pseudo_element?(name)
+        n = name.downcase
+        n.start_with?('-') || KNOWN_PSEUDO_ELEMENTS.include?(n)
       end
 
       def build_pseudo(element:, name:, argument:)
