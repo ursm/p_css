@@ -183,9 +183,11 @@ module CSS
       o <= 0x08 || o == 0x0B || (0x0E..0x1F).cover?(o) || o == 0x7F
     end
 
-    # §4.3.8.
+    # §4.3.8: `\` is a valid escape unless followed by a newline. EOF (c2 is
+    # nil) is NOT a newline, so `\` at end-of-input is a valid escape — it
+    # consumes to U+FFFD (§4.3.7), e.g. `#eof\` is the id `#eof␦`.
     def valid_escape?(c1, c2)
-      c1 == '\\' && c2 != "\n" && !c2.nil?
+      c1 == '\\' && c2 != "\n"
     end
 
     # §4.3.9.
@@ -322,7 +324,9 @@ module CSS
         @pos += 1
       end
 
-      return @chars[start, @pos - start].join unless c == '\\' && (n = @chars[@pos + 1]) && n != "\n"
+      # Inline valid_escape?: `\` is a valid escape unless followed by a
+      # newline; EOF (@chars[@pos + 1] is nil) is a valid escape → U+FFFD.
+      return @chars[start, @pos - start].join unless c == '\\' && @chars[@pos + 1] != "\n"
 
       buf = @chars[start, @pos - start].join.dup
       @pos += 1
@@ -334,7 +338,7 @@ module CSS
         if o >= 128 || IDENT_CP_TABLE[o]
           buf << c
           @pos += 1
-        elsif c == '\\' && (n = @chars[@pos + 1]) && n != "\n"
+        elsif c == '\\' && @chars[@pos + 1] != "\n"
           @pos += 1
           buf << consume_escaped_code_point
         else

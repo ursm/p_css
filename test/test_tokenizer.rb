@@ -148,4 +148,17 @@ class TestTokenizer < Minitest::Test
 
     assert_equal %i[ident whitespace ident], ts.map(&:type)
   end
+
+  # §4.3.8 / §4.3.7: `\` at EOF is a valid escape (EOF is not a newline) and
+  # consumes to U+FFFD, so `a\` is the ident `a␦` rather than a stray delim.
+  def test_trailing_backslash_at_eof_in_ident
+    assert_equal CSS::Token.new(:ident, "a�"), tokens('a\\').first
+  end
+
+  def test_trailing_backslash_at_eof_in_hash
+    t = tokens('#eof\\').first
+
+    assert_equal :hash, t.type
+    assert_equal "eof�", t.value
+  end
 end
