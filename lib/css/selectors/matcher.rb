@@ -55,11 +55,18 @@ module CSS
       # so this unique object never collides.
       SCOPE_KEY = Object.new.freeze
 
+      # Private key carrying the `:empty` whitespace policy on `state`. Only
+      # stamped when the caller opts out of the default (whitespace allowed),
+      # so the key's absence means "Selectors-4 default".
+      EMPTY_WS_KEY = Object.new.freeze
+
       # `scope` (an element, Array, or Set) is the set `:scope` matches; with
-      # none, `:scope` falls back to `:root`.
-      def matches?(element, selector, cache: nil, state: nil, scope: nil)
+      # none, `:scope` falls back to `:root`. `empty_allows_whitespace`
+      # (default true, Selectors-4) controls `:empty`: when false, any
+      # non-empty text — including whitespace — disqualifies (real browsers).
+      def matches?(element, selector, cache: nil, state: nil, scope: nil, empty_allows_whitespace: true)
         sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
-        state = with_scope(state, scope) unless scope.nil?
+        state = build_state(state, scope, empty_allows_whitespace)
 
         case sel
         when SelectorList
@@ -76,9 +83,9 @@ module CSS
       # querySelectorAll-style: every descendant of `roots` (an element or
       # array of elements), in document order, matching `selector`. `:scope`
       # honours the `scope:` option (default `:root`).
-      def select_all(roots, selector, state: nil, scope: nil)
+      def select_all(roots, selector, state: nil, scope: nil, empty_allows_whitespace: true)
         sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
-        state = with_scope(state, scope) unless scope.nil?
+        state = build_state(state, scope, empty_allows_whitespace)
         cache = {}
         list  = roots.is_a?(Array) ? roots : [roots]
         out   = []
@@ -88,9 +95,9 @@ module CSS
         list.size > 1 ? dedup_nodes(out) : out
       end
 
-      def select_first(roots, selector, state: nil, scope: nil)
+      def select_first(roots, selector, state: nil, scope: nil, empty_allows_whitespace: true)
         sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
-        state = with_scope(state, scope) unless scope.nil?
+        state = build_state(state, scope, empty_allows_whitespace)
         cache = {}
         list  = roots.is_a?(Array) ? roots : [roots]
 
@@ -104,9 +111,9 @@ module CSS
 
       # Nearest inclusive-ancestor of `element` matching `selector`
       # (Element#closest).
-      def closest(element, selector, state: nil, scope: nil)
+      def closest(element, selector, state: nil, scope: nil, empty_allows_whitespace: true)
         sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
-        state = with_scope(state, scope) unless scope.nil?
+        state = build_state(state, scope, empty_allows_whitespace)
         cache = {}
         cur   = element
 
@@ -120,6 +127,16 @@ module CSS
       end
 
       private
+
+      # Folds the `scope:` set and the `:empty` whitespace policy onto the
+      # user `state` Hash, so both thread through the match recursion. A no-op
+      # at the defaults (no scope, whitespace allowed), so recursive matches?
+      # calls — which always pass the defaults — leave a carried flag intact.
+      def build_state(state, scope, empty_allows_whitespace)
+        state = with_scope(state, scope) unless scope.nil?
+        state = (state || {}).merge(EMPTY_WS_KEY => false) unless empty_allows_whitespace
+        state
+      end
 
       def with_scope(state, scope)
         set =
@@ -332,7 +349,7 @@ module CSS
         when 'nth-last-child'            then match_nth(element, pc.argument, of_type: false, from_end: true,  cache:, state:)
         when 'nth-of-type'               then match_nth(element, pc.argument, of_type: true,  from_end: false, cache:, state:)
         when 'nth-last-of-type'          then match_nth(element, pc.argument, of_type: true,  from_end: true,  cache:, state:)
-        when 'empty'                     then empty?(element)
+        when 'empty'                     then empty?(element, empty_allows_whitespace?(state))
         when 'link', 'any-link'          then link?(element)
         when 'enabled'                   then disableable?(element) && !disabled?(element)
         when 'disabled'                  then disabled?(element)
@@ -741,10 +758,19 @@ module CSS
         token&.value
       end
 
-      # CSS3 :empty semantics — element children always disqualify;
-      # whitespace-only text content does not. Comments / PIs / doctypes
-      # are ignored.
-      def empty?(element)
+      def empty_allows_whitespace?(state)
+        return true if state.nil?
+
+        v = state[EMPTY_WS_KEY]
+        v.nil? ? true : v
+      end
+
+      # `:empty` — element children always disqualify; comments / PIs /
+      # doctypes are ignored in both modes. Text content disqualifies per
+      # `allow_ws`: when true (Selectors-4 default) only non-whitespace text
+      # disqualifies (so `<p> </p>` is :empty); when false (real browsers /
+      # Selectors-3) any non-empty text does.
+      def empty?(element, allow_ws)
         return false unless element.respond_to?(:children)
 
         element.children.each do |child|
@@ -753,8 +779,8 @@ module CSS
           end
 
           if child.respond_to?(:text?) && child.text?
-            content = child.respond_to?(:content) ? child.content : child.text
-            return false if content.to_s.match?(/\S/)
+            content = (child.respond_to?(:content) ? child.content : child.text).to_s
+            return false if allow_ws ? content.match?(/\S/) : !content.empty?
           end
         end
 

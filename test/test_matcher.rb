@@ -160,6 +160,22 @@ class TestMatcher < Minitest::Test
     refute_includes matched_tags(':empty'), 'p'
   end
 
+  def test_empty_whitespace_toggle
+    p = Nokogiri::HTML::DocumentFragment.parse('<p>   </p>').at_css('p')
+
+    # Default (Selectors-4): whitespace-only text is still :empty.
+    assert CSS.matches?(p, ':empty')
+    # Browser / Selectors-3 mode: whitespace text disqualifies.
+    refute CSS.matches?(p, ':empty', empty_allows_whitespace: false)
+  end
+
+  def test_empty_ignores_comments_in_both_modes
+    p = Nokogiri::HTML::DocumentFragment.parse('<p><!-- c --></p>').at_css('p')
+
+    assert CSS.matches?(p, ':empty')
+    assert CSS.matches?(p, ':empty', empty_allows_whitespace: false)
+  end
+
   def test_root_under_fragment_does_not_match
     # Under a full Document, the html element is the root.
     assert_includes matched_tags(':root'), 'html'

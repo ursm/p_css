@@ -50,11 +50,21 @@ module CSS
 
     def specificity(selector) = Selectors::SpecificityCalculator.calculate(selector)
 
-    def matches?(element, selector, state: nil, scope: nil) = Selectors::Matcher.matches?(element, selector, state:, scope:)
+    def matches?(element, selector, state: nil, scope: nil, empty_allows_whitespace: true)
+      Selectors::Matcher.matches?(element, selector, state:, scope:, empty_allows_whitespace:)
+    end
 
-    def select_all(roots, selector, state: nil, scope: nil)   = Selectors::Matcher.select_all(roots, selector, state:, scope:)
-    def select_first(roots, selector, state: nil, scope: nil) = Selectors::Matcher.select_first(roots, selector, state:, scope:)
-    def closest(element, selector, state: nil, scope: nil)    = Selectors::Matcher.closest(element, selector, state:, scope:)
+    def select_all(roots, selector, state: nil, scope: nil, empty_allows_whitespace: true)
+      Selectors::Matcher.select_all(roots, selector, state:, scope:, empty_allows_whitespace:)
+    end
+
+    def select_first(roots, selector, state: nil, scope: nil, empty_allows_whitespace: true)
+      Selectors::Matcher.select_first(roots, selector, state:, scope:, empty_allows_whitespace:)
+    end
+
+    def closest(element, selector, state: nil, scope: nil, empty_allows_whitespace: true)
+      Selectors::Matcher.closest(element, selector, state:, scope:, empty_allows_whitespace:)
+    end
 
     def parse_media_query_list(input) = MediaQueries::Parser.parse(input)
 
