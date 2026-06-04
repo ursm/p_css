@@ -45,8 +45,17 @@ module CSS
 
       EMPTY_CLASSES = [].freeze
 
-      def matches?(element, selector, cache: nil, state: nil)
-        sel = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
+      # Private key under which the `:scope` set is carried on the `state`
+      # object, so it threads through the deep match recursion without changing
+      # every method signature. A user `state` Hash is keyed by pseudo names,
+      # so this unique object never collides.
+      SCOPE_KEY = Object.new.freeze
+
+      # `scope` (an element, Array, or Set) is the set `:scope` matches; with
+      # none, `:scope` falls back to `:root`.
+      def matches?(element, selector, cache: nil, state: nil, scope: nil)
+        sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
+        state = with_scope(state, scope) unless scope.nil?
 
         case sel
         when SelectorList
@@ -60,7 +69,89 @@ module CSS
         end
       end
 
+      # querySelectorAll-style: every descendant of `roots` (an element or
+      # array of elements), in document order, matching `selector`. `:scope`
+      # honours the `scope:` option (default `:root`).
+      def select_all(roots, selector, state: nil, scope: nil)
+        sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
+        state = with_scope(state, scope) unless scope.nil?
+        cache = {}
+        list  = roots.is_a?(Array) ? roots : [roots]
+        out   = []
+
+        list.each { collect_matches(_1, sel, cache, state, out) }
+
+        list.size > 1 ? dedup_nodes(out) : out
+      end
+
+      def select_first(roots, selector, state: nil, scope: nil)
+        sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
+        state = with_scope(state, scope) unless scope.nil?
+        cache = {}
+        list  = roots.is_a?(Array) ? roots : [roots]
+
+        list.each do |root|
+          hit = first_match(root, sel, cache, state)
+          return hit if hit
+        end
+
+        nil
+      end
+
+      # Nearest inclusive-ancestor of `element` matching `selector`
+      # (Element#closest).
+      def closest(element, selector, state: nil, scope: nil)
+        sel   = selector.is_a?(String) ? Parser.parse_selector_list(selector) : selector
+        state = with_scope(state, scope) unless scope.nil?
+        cache = {}
+        cur   = element
+
+        while cur
+          return cur if matches?(cur, sel, cache: cache, state: state)
+
+          cur = parent_element(cur)
+        end
+
+        nil
+      end
+
       private
+
+      def with_scope(state, scope)
+        set =
+          case scope
+          when Set   then scope.to_a
+          when Array then scope
+          else            [scope]
+          end
+
+        (state || {}).merge(SCOPE_KEY => set)
+      end
+
+      def collect_matches(node, sel, cache, state, out)
+        element_children(node).each do |child|
+          out << child if matches?(child, sel, cache: cache, state: state)
+
+          collect_matches(child, sel, cache, state, out)
+        end
+      end
+
+      def first_match(node, sel, cache, state)
+        element_children(node).each do |child|
+          return child if matches?(child, sel, cache: cache, state: state)
+
+          found = first_match(child, sel, cache, state)
+          return found if found
+        end
+
+        nil
+      end
+
+      def dedup_nodes(nodes)
+        result = []
+        nodes.each {|n| result << n unless result.any? { same_node?(_1, n) } }
+        result
+      end
 
       # Walks the complex selector right-to-left starting at the rightmost
       # compound. Each combinator either succeeds against ancestors /
@@ -226,7 +317,7 @@ module CSS
         when 'not'                       then negate_selector_list_arg(element, pc.argument, cache, state)
         when 'has'                       then match_has(element, pc.argument, cache, state)
         when 'root'                      then parent_element(element).nil?
-        when 'scope'                     then parent_element(element).nil?
+        when 'scope'                     then match_scope(element, state)
         when 'first-child'               then previous_element(element).nil?
         when 'last-child'                then next_element(element).nil?
         when 'only-child'                then previous_element(element).nil? && next_element(element).nil?
@@ -288,6 +379,14 @@ module CSS
 
       def negate_selector_list_arg(element, arg, cache, state)
         arg.is_a?(SelectorList) && !matches?(element, arg, cache: cache, state: state)
+      end
+
+      # `:scope` matches the scoping roots supplied via `scope:` (carried on
+      # `state` under SCOPE_KEY); with none it falls back to `:root`.
+      def match_scope(element, state)
+        set = state && state[SCOPE_KEY]
+
+        set ? set.any? { same_node?(_1, element) } : parent_element(element).nil?
       end
 
       # `:has(...)` — searches the anchor's subtree (descendant / child) or its

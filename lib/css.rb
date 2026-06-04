@@ -50,7 +50,11 @@ module CSS
 
     def specificity(selector) = Selectors::SpecificityCalculator.calculate(selector)
 
-    def matches?(element, selector, state: nil) = Selectors::Matcher.matches?(element, selector, state: state)
+    def matches?(element, selector, state: nil, scope: nil) = Selectors::Matcher.matches?(element, selector, state:, scope:)
+
+    def select_all(roots, selector, state: nil, scope: nil)   = Selectors::Matcher.select_all(roots, selector, state:, scope:)
+    def select_first(roots, selector, state: nil, scope: nil) = Selectors::Matcher.select_first(roots, selector, state:, scope:)
+    def closest(element, selector, state: nil, scope: nil)    = Selectors::Matcher.closest(element, selector, state:, scope:)
 
     def parse_media_query_list(input) = MediaQueries::Parser.parse(input)
 
