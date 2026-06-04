@@ -73,7 +73,16 @@ module CSS
   # specific elements in that state, or falsy (no match).
   type matcher_state = Hash[Symbol | String, bool | Set[untyped] | Array[untyped]]
 
-  def self.matches?: (untyped element, String | selector selector, ?cache: Hash[Integer, untyped], ?state: matcher_state?) -> bool
+  # The set `:scope` matches: a single element, or an Array / Set of them.
+  type scope = untyped | Array[untyped] | Set[untyped]
+
+  def self.matches?: (untyped element, String | selector selector, ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> bool
+
+  # querySelector-style tree queries over the descendants of `roots` (an
+  # element or array of elements). `closest` walks inclusive ancestors.
+  def self.select_all: (untyped roots, String | selector selector, ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> Array[untyped]
+  def self.select_first: (untyped roots, String | selector selector, ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> untyped
+  def self.closest: (untyped element, String | selector selector, ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> untyped
 
   # Media queries (Media Queries 4)
   # ---------------------------------------------------------------

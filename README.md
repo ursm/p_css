@@ -40,6 +40,7 @@ is hardwired in.
 | AnB microsyntax | `CSS.parse_anb` | Syntax 4 §6.7 |
 | Specificity | `CSS.specificity` | Selectors §16 |
 | Selector matcher | `CSS.matches?` | Selectors 4 |
+| Tree queries | `CSS.select_all`, `CSS.select_first`, `CSS.closest` | Selectors 4 |
 | Nesting de-sugar | `CSS.desugar` | Nesting 1 |
 | Media query parser | `CSS.parse_media_query_list` | Media Queries 4 |
 | Media query evaluator | `CSS.media_matches?` | Media Queries 4 |
@@ -134,7 +135,7 @@ attr.matcher                        # => :exact
 attr.case_flag                      # => :i
 
 nth = compound.components[1]
-nth.argument                        # => CSS::Selectors::AnB(step: 2, offset: 1)
+nth.argument                        # => CSS::Selectors::AnB(step: 2, offset: 1, of: nil)
 ```
 
 The selector parser also accepts the prelude of a parsed rule directly (the
@@ -179,13 +180,38 @@ active = doc.at_css('li.active')
 CSS.matches?(active, 'li:nth-child(2n)')                 # => true
 CSS.matches?(active, ':is(.active, .selected)')          # => true
 CSS.matches?(active, 'ul > li:not(:first-child)')        # => true
+CSS.matches?(active, 'li:nth-child(1 of .active)')       # => true
+CSS.matches?(doc.at_css('ul'), 'ul:has(> .active)')      # => true
 ```
 
-Stateful pseudo-classes (`:hover`, `:focus`, `:visited`, validity API states,
-etc.) return `false` by default — there's no UA in the loop. Pass a `state:`
-Hash to opt in; see [Stateful pseudo-classes](#stateful-pseudo-classes)
-below. `:has()` is not yet implemented (its argument is kept as opaque
-component values).
+Supported Selectors-4 features include `:has()` (relative selector list),
+`:nth-child(An+B of S)`, and namespace prefixes (`*|name`, `|name`; a declared
+prefix is rejected — there is no `@namespace` mechanism). `:empty` follows
+Selectors-4 (whitespace-only content is `:empty`); pass
+`empty_allows_whitespace: false` for the real-browser / Selectors-3 behaviour.
+
+Stateful pseudo-classes (`:hover`, `:focus`, `:visited`, and the
+constraint-validation states `:valid` / `:invalid` / `:user-valid` /
+`:user-invalid` / `:indeterminate`) return `false` by default — there's no UA
+in the loop. Pass a `state:` Hash to opt in; see
+[Stateful pseudo-classes](#stateful-pseudo-classes) below.
+
+#### Tree queries and `:scope`
+
+`select_all` / `select_first` walk a root's descendants (document order);
+`closest` walks inclusive ancestors. `:scope` matches the elements passed via
+`scope:` (defaulting to `:root`):
+
+```ruby
+row = doc.at_css('ul')
+
+CSS.select_all(row, '.active')                       # => [<li class="active">]
+CSS.select_first(row, 'li')                          # => <li>one</li>
+CSS.closest(active, 'ul')                            # => <ul>
+
+# `:scope` resolves against the supplied scoping element.
+CSS.select_all(row, ':scope > li', scope: row)       # => the three <li>s
+```
 
 ### Nesting de-sugar
 
@@ -271,8 +297,9 @@ encapsulation are not modeled — `@layer` / `@supports` / `@scope` /
 ### Stateful pseudo-classes
 
 `:hover`, `:focus`, `:focus-within`, `:focus-visible`, `:active`, `:visited`,
-and `:target` return `false` from the matcher by default. Pass a `state:`
-Hash to override:
+`:target`, and the constraint-validation states (`:valid`, `:invalid`,
+`:user-valid`, `:user-invalid`, `:indeterminate`) return `false` from the
+matcher by default. Pass a `state:` Hash to override:
 
 ```ruby
 state = {
@@ -336,9 +363,9 @@ r.to_s       # => "U+1000-10FF"
 
 These are deliberate omissions; pull requests welcome:
 
-- Selectors Level 4 namespace prefixes (`ns|*`)
+- Declared namespace prefixes / `@namespace` (only `*|name` and `|name` are
+  supported; a declared prefix like `svg|rect` is rejected)
 - The column combinator `||`
-- `:has()` (relative selector list — needs a small AST extension)
 - Strict/forgiving selector list distinction
 - `@scope` proximity and the rest of the Cascade Layers spec
 - Layout calculations (`display: block` vs flex sizing, `overflow: hidden`

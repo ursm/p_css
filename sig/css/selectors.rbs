@@ -17,11 +17,14 @@ module CSS
     type case_flag = :i | :s
 
     # `argument` is `nil` for plain `:hover` etc., a `SelectorList` for
-    # `:not / :is / :where / :matches`, an `AnB` for `:nth-*`, or an
-    # opaque component-value array for unrecognized functional pseudos
-    # (including `:has`, which is intentionally not parsed as a selector
-    # list yet).
-    type pseudo_argument = nil | SelectorList | AnB | Array[component_value]
+    # `:not / :is / :where / :matches`, a `RelativeSelectorList` for `:has`,
+    # an `AnB` for `:nth-*`, or an opaque component-value array for
+    # unrecognized functional pseudos.
+    type pseudo_argument = nil | SelectorList | RelativeSelectorList | AnB | Array[component_value]
+
+    # Namespace constraint: `nil` (no prefix — any namespace), `'*'` (any),
+    # or `''` (no namespace).
+    type namespace = String?
 
     class SelectorList < Data
       include Node
@@ -60,14 +63,17 @@ module CSS
       include Node
 
       attr_reader name: String
+      attr_reader namespace: namespace
 
-      def self.new: (name: String) -> TypeSelector
+      def self.new: (name: String, ?namespace: namespace) -> TypeSelector
     end
 
     class UniversalSelector < Data
       include Node
 
-      def self.new: () -> UniversalSelector
+      attr_reader namespace: namespace
+
+      def self.new: (?namespace: namespace) -> UniversalSelector
     end
 
     class NestingSelector < Data
@@ -99,8 +105,9 @@ module CSS
       attr_reader matcher: attribute_matcher?
       attr_reader value: String?
       attr_reader case_flag: case_flag?
+      attr_reader namespace: namespace
 
-      def self.new: (name: String, matcher: attribute_matcher?, value: String?, case_flag: case_flag?) -> AttributeSelector
+      def self.new: (name: String, matcher: attribute_matcher?, value: String?, case_flag: case_flag?, ?namespace: namespace) -> AttributeSelector
     end
 
     class PseudoClass < Data
@@ -126,8 +133,34 @@ module CSS
 
       attr_reader step: Integer
       attr_reader offset: Integer
+      attr_reader of: SelectorList?
 
-      def self.new: (step: Integer, offset: Integer) -> AnB
+      def self.new: (step: Integer, offset: Integer, ?of: SelectorList?) -> AnB
+
+      def to_s: () -> String
+    end
+
+    # The argument of `:has()` — a list of relative selectors.
+    class RelativeSelectorList < Data
+      include Node
+
+      attr_reader selectors: Array[RelativeSelector]
+
+      def self.new: (selectors: Array[RelativeSelector]) -> RelativeSelectorList
+
+      def to_s: () -> String
+    end
+
+    # One relative selector: a leading combinator (`:descendant` default,
+    # `:child`, `:next_sibling`, `:subsequent_sibling`) plus a complex
+    # selector.
+    class RelativeSelector < Data
+      include Node
+
+      attr_reader combinator: combinator
+      attr_reader complex: ComplexSelector
+
+      def self.new: (combinator: combinator, complex: ComplexSelector) -> RelativeSelector
 
       def to_s: () -> String
     end
@@ -154,7 +187,11 @@ module CSS
       STATEFUL_PSEUDOS: Set[String]
       PROPAGATING_STATEFUL_PSEUDOS: Set[String]
 
-      def self.matches?: (untyped element, untyped selector, ?cache: Hash[Integer, untyped], ?state: matcher_state?) -> bool
+      def self.matches?: (untyped element, untyped selector, ?cache: Hash[Integer, untyped], ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> bool
+
+      def self.select_all: (untyped roots, untyped selector, ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> Array[untyped]
+      def self.select_first: (untyped roots, untyped selector, ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> untyped
+      def self.closest: (untyped element, untyped selector, ?state: matcher_state?, ?scope: scope?, ?empty_allows_whitespace: bool) -> untyped
 
       def self.tag_of: (untyped element, ?Hash[Integer, untyped]?) -> String
       def self.id_of: (untyped element, ?Hash[Integer, untyped]?) -> String?
