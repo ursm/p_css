@@ -657,13 +657,11 @@ module CSS
 
           if type == 'checkbox' || type == 'radio'
             !attr(element, 'checked').nil?
-          elsif type == 'submit' || type == 'image'
-            default_submit?(element)
           else
-            false
+            submit_button?(element) && default_submit?(element)
           end
         when 'button'
-          (attr(element, 'type') || 'submit').to_s.downcase == 'submit' && default_submit?(element)
+          submit_button?(element) && default_submit?(element)
         else
           false
         end
@@ -672,7 +670,11 @@ module CSS
       def submit_button?(element)
         case tag(element)
         when 'button'
-          (attr(element, 'type') || 'submit').to_s.downcase == 'submit'
+          # `<button>`'s type is enumerated with Submit as both the missing-
+          # and invalid-value default, so it is a submit button unless it is
+          # explicitly `reset` or `button` (`type=""` / `type="x"` are submit).
+          type = attr(element, 'type').to_s.downcase
+          type != 'reset' && type != 'button'
         when 'input'
           type = attr(element, 'type').to_s.downcase
           type == 'submit' || type == 'image'
@@ -700,6 +702,9 @@ module CSS
       def first_submit(node)
         element_children(node).each do |child|
           return child if submit_button?(child)
+
+          # A nested <form>'s controls belong to that form, not this one.
+          next if tag(child) == 'form'
 
           found = first_submit(child)
           return found if found

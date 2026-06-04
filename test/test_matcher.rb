@@ -320,6 +320,28 @@ class TestMatcher < Minitest::Test
     refute CSS.matches?(buttons[1], ':default')
   end
 
+  def test_default_button_invalid_type_is_submit
+    # <button>'s type is enumerated with Submit as the invalid-value default,
+    # so type="frobnicate" is still a submit button.
+    form = Nokogiri::HTML::DocumentFragment.parse('<form><button type="frobnicate">A</button></form>').at_css('form')
+    btn  = form.at_css('button')
+
+    assert CSS.matches?(btn, ':default')
+  end
+
+  def test_default_skips_nested_form_controls
+    # The outer form's first submit must skip the nested form's button.
+    html = '<form id="outer"><div><form id="inner"><button id="a">A</button></form></div><button id="b">B</button></form>'
+    frag = Nokogiri::HTML::DocumentFragment.parse(html)
+    a    = frag.at_css('#a')
+    b    = frag.at_css('#b')
+
+    # #a belongs to the inner form (and is its default); #b is the outer
+    # form's first own submit button.
+    assert CSS.matches?(a, ':default')
+    assert CSS.matches?(b, ':default')
+  end
+
   # Constraint-validation states (state: opt-in) --------------------
 
   def test_validity_states_require_state
